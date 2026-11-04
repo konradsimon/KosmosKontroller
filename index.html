@@ -1,0 +1,799 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kosmos Kontroller</title>
+<meta name="theme-color" content="#151514">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<style>
+  :root {
+    --paper: #efede8;
+    --ink: #151514;
+    --muted: #77756f;
+    --rule: rgba(21, 21, 20, .14);
+    --field: #f7f6f3;
+    --signal: #e0301e;
+    --ok: #2fae5a;
+    --font: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #151514; --ink: #ecebe6; --muted: #8b8983;
+      --rule: rgba(236, 235, 230, .14); --field: #1c1c1b;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #151514; --ink: #ecebe6; --muted: #8b8983;
+    --rule: rgba(236, 235, 230, .14); --field: #1c1c1b;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--paper); color: var(--ink);
+    font-family: var(--font); font-size: 15px; line-height: 1.4;
+    font-variant-numeric: tabular-nums;
+  }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 32px 16px 64px; }
+
+  button, select, input {
+    font: inherit; color: var(--ink); background: transparent;
+    border: 1px solid var(--rule); border-radius: 0; padding: 6px 10px; height: 34px;
+  }
+  select { padding-right: 4px; }
+  input:focus, select:focus { outline: none; border-color: var(--ink); }
+  input.warn { border-color: var(--signal); }
+  button { cursor: pointer; border-color: var(--ink); }
+  button:hover:not(:disabled) { background: var(--ink); color: var(--paper); }
+  button:disabled { opacity: .3; cursor: default; }
+  button.solid { background: var(--ink); color: var(--paper); }
+  button.solid:hover:not(:disabled) { background: transparent; color: var(--ink); }
+  button.text { border: 0; height: auto; padding: 4px 0; color: var(--muted); }
+  button.text:hover:not(:disabled) { background: none; color: var(--ink); }
+  input[type="checkbox"] { width: 16px; height: 16px; margin: 0; accent-color: var(--ink); vertical-align: -3px; }
+  input[type="range"] { padding: 0; border: 0; height: 20px; accent-color: var(--ink); width: 140px; }
+  .muted { color: var(--muted); }
+
+  /* ---------- Kopf ---------- */
+  header {
+    display: flex; justify-content: space-between; align-items: flex-end; gap: 16px 24px; flex-wrap: wrap;
+    border-bottom: 2px solid var(--ink); padding-bottom: 14px;
+  }
+  h1 { margin: 0; font-size: 40px; line-height: 1; font-weight: 700; letter-spacing: -.02em; }
+  .conn { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .status { color: var(--muted); }
+  .status.ok { color: var(--ink); }
+  .status.ok::before { content: "●"; color: var(--ok); margin-right: 6px; }
+  .ports { display: none; gap: 8px; }
+  .ports.show { display: flex; }
+
+  /* ---------- Presets ---------- */
+  .presets {
+    display: flex; align-items: center; gap: 12px 24px; flex-wrap: wrap;
+    padding: 16px 0; border-bottom: 1px solid var(--rule);
+  }
+  .tabs { display: inline-flex; border: 1px solid var(--ink); }
+  .tabs button { border: 0; height: 34px; padding: 0 14px; }
+  .tabs button + button { border-left: 1px solid var(--ink); }
+  .tabs button.on { background: var(--ink); color: var(--paper); }
+  .tabs button .n { font-weight: 700; margin-right: 6px; }
+  .presets .pname { width: 180px; }
+  .gesture { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+
+  .seg { display: inline-flex; border: 1px solid var(--ink); }
+  .seg label { position: relative; }
+  .seg input { position: absolute; opacity: 0; pointer-events: none; }
+  .seg span { display: block; padding: 6px 12px; cursor: pointer; }
+  .seg label + label span { border-left: 1px solid var(--ink); }
+  .seg input:checked + span { background: var(--ink); color: var(--paper); }
+  .seg input:focus-visible + span { outline: 2px solid var(--signal); outline-offset: -2px; }
+
+  /* ---------- Raster ---------- */
+  main { display: grid; grid-template-columns: 260px 1fr; gap: 48px; margin-top: 28px; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; gap: 32px; } .gesture { margin-left: 0; } }
+
+  /* ---------- Live-Ansicht ---------- */
+  .live { position: sticky; top: 24px; align-self: start; }
+  .live h3 { font-size: 13px; font-weight: 400; color: var(--muted); margin: 0 0 8px; }
+  .pad { position: relative; aspect-ratio: 1; background: var(--field); border: 1px solid var(--rule); }
+  .pad::before, .pad::after { content: ""; position: absolute; background: var(--rule); }
+  .pad::before { left: 50%; top: 0; bottom: 0; width: 1px; }
+  .pad::after { top: 50%; left: 0; right: 0; height: 1px; }
+  .pad .lab { position: absolute; font-size: 12px; color: var(--muted); }
+  .pad .lab.y { left: calc(50% + 6px); top: 4px; }
+  .pad .lab.x { right: 6px; top: calc(50% + 2px); }
+  .dot {
+    position: absolute; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%;
+    background: var(--ink); left: 50%; top: 50%; z-index: 1;
+  }
+  .dot.moving { background: var(--signal); }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 20px; }
+  .dial { position: relative; width: 88px; height: 88px; border: 1px solid var(--rule); border-radius: 50%; background: var(--field); }
+  .dial .hand {
+    position: absolute; left: 50%; top: 8px; width: 2px; height: 36px; margin-left: -1px;
+    background: var(--ink); transform-origin: 50% 36px;
+  }
+  .dial.moving .hand { background: var(--signal); }
+  .key { width: 88px; height: 88px; border: 1px solid var(--rule); background: var(--field); }
+  .key.on { background: var(--signal); border-color: var(--signal); }
+  .last { margin-top: 20px; font-size: 13px; color: var(--muted); min-height: 1.4em; }
+  .rawopt { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 13px; color: var(--muted); }
+
+  /* ---------- Blöcke ---------- */
+  .block { border-bottom: 1px solid var(--rule); padding-bottom: 20px; margin-bottom: 24px; }
+  .block-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 8px; }
+  .block-head h2 { margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -.01em; }
+  .block-head .pin { font-size: 13px; font-weight: 400; color: var(--muted); margin-left: 8px; }
+  .empty { color: var(--muted); padding: 6px 0; }
+
+  .grid { display: grid; grid-template-columns: minmax(0, 1fr) 176px 68px 108px 64px 52px; gap: 8px; align-items: center; }
+  .thead { font-size: 12px; color: var(--muted); padding: 4px 0; }
+  .thead span:nth-child(5) { text-align: right; }
+  .trow { padding: 4px 0; }
+  .trow input, .trow select { width: 100%; }
+  .trow .none { color: var(--muted); padding-left: 10px; }
+  .val { text-align: right; font-size: 18px; font-weight: 700; }
+  .val.hit { color: var(--signal); }
+  .acts { display: flex; justify-content: flex-end; gap: 4px; }
+  .acts button { border: 0; height: 34px; width: 24px; padding: 0; color: var(--muted); font-size: 16px; }
+  .acts button:hover { background: none; color: var(--ink); }
+  .acts button.open { color: var(--ink); }
+
+  .sub { font-size: 13px; color: var(--muted); padding: 0 0 6px 10px; }
+  .details {
+    display: flex; align-items: center; gap: 10px 24px; flex-wrap: wrap;
+    margin: 2px 0 10px; padding: 12px; background: var(--field); border: 1px solid var(--rule); color: var(--muted);
+  }
+  .details label { display: inline-flex; align-items: center; gap: 8px; }
+  .details select { width: auto; }
+  .curve { width: 30px; height: 30px; border: 1px solid var(--rule); background: var(--paper); }
+  .curve path { fill: none; stroke: var(--ink); stroke-width: 1.5; }
+
+  @media (max-width: 640px) {
+    .grid { grid-template-columns: 1fr 1fr 64px; }
+    .thead { display: none; }
+    .trow .tname { grid-column: 1 / 3; }
+    .trow .val { grid-column: 3; grid-row: 1; }
+    .trow .acts { grid-column: 3; }
+  }
+
+  .actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .actions .sep { flex: 1; }
+  .hint { color: var(--muted); font-size: 13px; margin-top: 10px; min-height: 1.4em; }
+  .hint.dirty { color: var(--signal); }
+  .err { color: var(--signal); margin-top: 12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Kosmos Kontroller</h1>
+    <div class="conn">
+      <span class="status" id="status">nicht verbunden</span>
+      <button class="text" id="portsBtn" hidden>Port</button>
+      <div class="ports" id="ports">
+        <select id="inSel" title="MIDI-Eingang"></select>
+        <select id="outSel" title="MIDI-Ausgang"></select>
+      </div>
+      <button class="solid" id="connectBtn">Verbinden</button>
+    </div>
+  </header>
+  <div class="err" id="err"></div>
+
+  <div class="presets">
+    <div class="tabs" id="tabs"></div>
+    <input class="pname" id="presetName" placeholder="Preset-Name" title="Name des aktiven Presets">
+    <div class="gesture">
+      <span class="muted">Preset am Taster wechseln</span>
+      <div class="seg" id="gestureSeg"></div>
+      <select id="longTime" title="Dauer des langen Drucks"></select>
+    </div>
+  </div>
+
+  <main>
+    <aside class="live">
+      <h3>Joystick</h3>
+      <div class="pad">
+        <span class="lab y">Y</span><span class="lab x">X</span>
+        <div class="dot" id="dot"></div>
+      </div>
+      <div class="row2">
+        <div><h3>Rotation</h3><div class="dial" id="dial"><div class="hand" id="hand"></div></div></div>
+        <div><h3>Taster</h3><div class="key" id="key"></div></div>
+      </div>
+      <div class="last" id="last"></div>
+      <label class="rawopt" title="Zeigt die echten Joystick-Positionen, auch ohne Ziele. Der Controller sendet dafür laufend SysEx, das sieht man auch in Ableton.">
+        <input type="checkbox" id="rawOn"> Rohwerte vom Controller (SysEx)
+      </label>
+    </aside>
+
+    <section>
+      <div id="blocks"></div>
+      <div class="actions">
+        <button class="solid" id="saveBtn" disabled>Auf Controller speichern</button>
+        <button id="reloadBtn" disabled>Vom Controller laden</button>
+        <span class="sep"></span>
+        <button id="exportBtn">Exportieren</button>
+        <button id="importBtn">Importieren</button>
+        <button id="resetBtn" disabled>Werkseinstellungen</button>
+        <input type="file" id="importFile" accept=".json,application/json" hidden>
+      </div>
+      <div class="hint" id="hint"></div>
+    </section>
+  </main>
+</div>
+
+<script>
+// ---- Protokoll (muss zum Sketch passen) ----
+const HDR = [0xF0, 0x7D, 0x4B, 0x4B];
+const CMD = { GET: 0x01, PRESET: 0x02, SET: 0x03, SAVE: 0x04, RESET: 0x05, STATE: 0x06, SELECT: 0x07, GLOBAL: 0x08, MONITOR: 0x09, LIVE: 0x0A };
+const NAME_LEN = 16, PRESETS = 4, AXIS_TARGETS = 4, BUTTON_TARGETS = 4;
+
+const AXES = [
+  { title: 'Y-Achse', pin: 'A0' },
+  { title: 'X-Achse', pin: 'A1' },
+  { title: 'Rotation', pin: 'A2' },
+];
+
+// Arten der Achsen-Ziele (Reihenfolge = Sketch)
+const AT = { PB: 0, PB_PLUS: 1, PB_MINUS: 2, CC: 3, CC_PLUS: 4, CC_MINUS: 5 };
+const AXIS_TYPES = ['Pitchbend', 'Pitchbend nur +', 'Pitchbend nur −', 'CC ganze Achse', 'CC nur +', 'CC nur −'];
+const isPB = type => type <= AT.PB_MINUS;
+
+// Arten der Taster-Ziele (Reihenfolge = Sketch)
+const BT = { CC_HOLD: 0, CC_TOGGLE: 1, NOTE_HOLD: 2, NOTE_TOGGLE: 3, PROGRAM: 4 };
+const BUTTON_TYPES = ['CC halten', 'CC umschalten', 'Note halten', 'Note umschalten', 'Programm'];
+const isNote = type => type === BT.NOTE_HOLD || type === BT.NOTE_TOGGLE;
+
+const GESTURES = ['Aus', 'Lang drücken', '3× drücken'];
+
+const CURVES = [
+  ['Linear', t => t],
+  ['Exponentiell', t => t * t],
+  ['Stark exponentiell', t => t * t * t],
+  ['Logarithmisch', t => 1 - (1 - t) * (1 - t)],
+  ['S-Kurve', t => t * t * (3 - 2 * t)],
+];
+
+// ---- Zustand ----
+const axisTarget = (on, type, cc, channel) => ({ on, type, cc, channel, curve: 0, invert: 0, hiRes: 0, amount: 100, name: '' });
+const buttonTarget = (on, type, number, channel) => ({ on, type, number, channel, name: '' });
+
+// Werkseinstellungen = Sketch (Kanal 0–15)
+function defaultPreset(i) {
+  const axes = AXES.map(() => Array.from({ length: AXIS_TARGETS }, () => axisTarget(0, AT.CC, 1, 1)));
+  axes[0][0] = axisTarget(1, AT.PB, 0, 1);
+  axes[1][0] = axisTarget(1, AT.CC_PLUS, 1, 1);
+  const button = Array.from({ length: BUTTON_TARGETS }, () => buttonTarget(0, BT.CC_HOLD, 64, 1));
+  button[0].on = 1;
+  return { name: `Preset ${i + 1}`, axes, button };
+}
+
+const state = {
+  active: 0, gesture: 1, longTime: 60,
+  presets: Array.from({ length: PRESETS }, (_, i) => defaultPreset(i)),
+};
+const P = () => state.presets[state.active];
+
+let access = null, midiIn = null, midiOut = null;
+let dirty = false, connected = false, awaitingDump = false;
+const pendingSets = new Set(); let setTimer = null;
+const openDetails = new Set();
+const msb = {};
+
+const $ = id => document.getElementById(id);
+const enc = new TextEncoder(), dec = new TextDecoder();
+const esc = s => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+const clampInt = (v, lo, hi, d) => Number.isInteger(v) ? Math.max(lo, Math.min(hi, v)) : d;
+
+function fitName(s) {
+  while (enc.encode(s).length > NAME_LEN) s = [...s].slice(0, -1).join('');
+  return s;
+}
+
+// ---- Darstellung ----
+const options = (labels, sel) => labels.map((l, i) => `<option value="${i}" ${i === sel ? 'selected' : ''}>${l}</option>`).join('');
+const channelOptions = sel => Array.from({ length: 16 }, (_, i) => `<option value="${i}" ${i === sel ? 'selected' : ''}>Kanal ${i + 1}</option>`).join('');
+
+function curveSvg(c) {
+  const f = CURVES[c][1];
+  const pts = Array.from({ length: 21 }, (_, i) => { const t = i / 20; return `${2 + t * 26},${28 - f(t) * 26}`; });
+  return `<svg class="curve" viewBox="0 0 30 30"><path d="M${pts.join(' L')}"/></svg>`;
+}
+
+// Kurzfassung der Feinheiten, nur was vom Standard abweicht
+function summary(t) {
+  const parts = [];
+  if (t.curve) parts.push(CURVES[t.curve][0]);
+  if (t.amount !== 100) parts.push(`Stärke ${t.amount} %`);
+  if (t.invert) parts.push('umgekehrt');
+  if (t.hiRes && !isPB(t.type)) parts.push(t.cc < 32 ? '14 Bit' : '14 Bit (nur CC 0–31)');
+  return parts.join(' · ');
+}
+
+function axisRow(a, i) {
+  const t = P().axes[a][i], key = `a.${a}.${i}`, base = `axes.${a}.${i}`;
+  const open = openDetails.has(key);
+  const warn = t.hiRes && !isPB(t.type) && t.cc > 31;
+  const row = `
+    <div class="grid trow">
+      <input class="tname" data-p="${base}.name" data-str value="${esc(t.name)}" placeholder="Name">
+      <select data-p="${base}.type">${options(AXIS_TYPES, t.type)}</select>
+      ${isPB(t.type) ? '<span class="none">–</span>'
+        : `<input type="number" min="0" max="127" value="${t.cc}" data-p="${base}.cc" class="${warn ? 'warn' : ''}" title="CC-Nummer">`}
+      <select data-p="${base}.channel">${channelOptions(t.channel)}</select>
+      <div class="val" data-val="${key}">–</div>
+      <div class="acts">
+        <button class="${open ? 'open' : ''}" data-details="${key}" title="Kurve, Stärke, Umkehren${isPB(t.type) ? '' : ', 14 Bit'}">⋯</button>
+        <button data-rm="${key}" title="Ziel entfernen">×</button>
+      </div>
+    </div>`;
+  if (!open) {
+    const s = summary(t);
+    return row + (s ? `<div class="sub">${s}</div>` : '');
+  }
+  return row + `
+    <div class="details">
+      <label>Kurve <select data-p="${base}.curve">${options(CURVES.map(c => c[0]), t.curve)}</select>${curveSvg(t.curve)}</label>
+      <label>Stärke <input type="range" min="0" max="100" step="5" value="${t.amount}" data-p="${base}.amount"><span data-amount>${t.amount} %</span></label>
+      <label><input type="checkbox" data-p="${base}.invert" ${t.invert ? 'checked' : ''}> Umkehren</label>
+      ${isPB(t.type) ? '' : `<label title="Sendet CC n und CC n+32 – nur CC 0–31"><input type="checkbox" data-p="${base}.hiRes" ${t.hiRes ? 'checked' : ''}> 14 Bit</label>`}
+    </div>`;
+}
+
+function buttonRow(i) {
+  const t = P().button[i], key = `b.${i}`, base = `button.${i}`;
+  const title = isNote(t.type) ? 'Note' : t.type === BT.PROGRAM ? 'Programm' : 'CC-Nummer';
+  return `
+    <div class="grid trow">
+      <input class="tname" data-p="${base}.name" data-str value="${esc(t.name)}" placeholder="Name">
+      <select data-p="${base}.type">${options(BUTTON_TYPES, t.type)}</select>
+      <input type="number" min="0" max="127" value="${t.number}" data-p="${base}.number" title="${title}">
+      <select data-p="${base}.channel">${channelOptions(t.channel)}</select>
+      <div class="val" data-val="${key}">–</div>
+      <div class="acts"><button data-rm="${key}" title="Ziel entfernen">×</button></div>
+    </div>`;
+}
+
+function renderBlock(b) {
+  let el = $('blk' + b);
+  if (!el) {
+    el = document.createElement('div');
+    el.className = 'block';
+    el.id = 'blk' + b;
+    $('blocks').appendChild(el);
+  }
+  const isButton = b === AXES.length;
+  const list = isButton ? P().button : P().axes[b];
+  const used = list.map((t, i) => t.on ? i : -1).filter(i => i >= 0);
+  const title = isButton ? 'Taster<span class="pin">Pin 3</span>' : `${AXES[b].title}<span class="pin">${AXES[b].pin}</span>`;
+  const add = used.length < list.length ? `<button class="text" data-add="${b}">+ Ziel</button>` : '';
+  const head = `<div class="grid thead"><span>Name</span><span>Art</span><span>${isButton ? 'Nummer' : 'CC'}</span><span>Kanal</span><span>Wert</span><span></span></div>`;
+  const rows = used.map(i => isButton ? buttonRow(i) : axisRow(b, i)).join('');
+  el.innerHTML = `<div class="block-head"><h2>${title}</h2>${add}</div>` +
+    (used.length ? head + rows : '<div class="empty">Keine Ziele – sendet nichts.</div>');
+}
+
+function renderPresetBar() {
+  $('tabs').innerHTML = state.presets.map((p, i) =>
+    `<button class="${i === state.active ? 'on' : ''}" data-preset="${i}"><span class="n">${i + 1}</span>${esc(p.name || '')}</button>`).join('');
+  if (document.activeElement !== $('presetName')) $('presetName').value = P().name;
+  $('gestureSeg').innerHTML = GESTURES.map((g, i) =>
+    `<label><input type="radio" name="gesture" value="${i}" ${i === state.gesture ? 'checked' : ''}><span>${g}</span></label>`).join('');
+  $('longTime').hidden = state.gesture !== 1;
+  $('longTime').value = state.longTime;
+}
+
+function renderAll() {
+  renderPresetBar();
+  for (let b = 0; b <= AXES.length; b++) renderBlock(b);
+}
+
+// ---- Pfade wie "axes.1.2.curve" oder "button.0.number" im aktiven Preset ----
+function setPath(path, v) {
+  const keys = path.split('.'), last = keys.pop();
+  keys.reduce((o, k) => o[k], P())[last] = v;
+}
+const blockOf = el => +el.closest('.block').id.slice(3);
+
+// ---- Eingaben ----
+const RERENDER = /\.(type|curve|hiRes)$/;
+
+$('blocks').addEventListener('input', e => {
+  const t = e.target, path = t.dataset.p;
+  if (!path) return;
+  let v;
+  if ('str' in t.dataset) {
+    v = fitName(t.value);
+    if (v !== t.value) t.value = v;
+  } else if (t.type === 'checkbox') {
+    v = t.checked ? 1 : 0;
+  } else {
+    v = parseInt(t.value, 10);
+    if (Number.isNaN(v)) return;
+    if (/\.(cc|number)$/.test(path)) v = clampInt(v, 0, 127, 0);
+  }
+  setPath(path, v);
+
+  if (RERENDER.test(path)) renderBlock(blockOf(t));
+  else if (path.endsWith('.amount')) t.parentElement.querySelector('[data-amount]').textContent = v + ' %';
+  else if (path.endsWith('.cc')) {
+    const [, a, i] = path.split('.').map(Number), tg = P().axes[a][i];
+    t.classList.toggle('warn', !!tg.hiRes && v > 31);
+  }
+  presetChanged(state.active);
+});
+
+$('blocks').addEventListener('click', e => {
+  const d = e.target.dataset;
+  if (d.add !== undefined) {
+    const b = +d.add, list = b === AXES.length ? P().button : P().axes[b];
+    const free = list.findIndex(t => !t.on);
+    if (free < 0) return;
+    const prev = [...list].reverse().find(t => t.on);
+    const channel = prev ? prev.channel : 1;
+    list[free] = b === AXES.length ? buttonTarget(1, BT.CC_HOLD, 64, channel) : axisTarget(1, AT.CC, 1, channel);
+    renderBlock(b);
+    presetChanged(state.active);
+  } else if (d.rm !== undefined) {
+    const [kind, x, y] = d.rm.split('.');
+    if (kind === 'a') P().axes[+x][+y].on = 0; else P().button[+x].on = 0;
+    openDetails.delete(d.rm);
+    renderBlock(blockOf(e.target));
+    presetChanged(state.active);
+  } else if (d.details !== undefined) {
+    openDetails.has(d.details) ? openDetails.delete(d.details) : openDetails.add(d.details);
+    renderBlock(blockOf(e.target));
+  }
+});
+
+$('tabs').addEventListener('click', e => {
+  const b = e.target.closest('[data-preset]');
+  if (!b) return;
+  flushSets();
+  state.active = +b.dataset.preset;
+  openDetails.clear();
+  renderAll();
+  sysex(CMD.SELECT, [state.active]);
+});
+
+$('presetName').addEventListener('input', e => {
+  const v = fitName(e.target.value);
+  if (v !== e.target.value) e.target.value = v;
+  P().name = v;
+  renderPresetBar();
+  presetChanged(state.active);
+});
+
+$('longTime').innerHTML = [40, 50, 60, 80, 100, 120, 150].map(v => `<option value="${v}">${v * 10} ms</option>`).join('');
+function globalChanged() {
+  sysex(CMD.GLOBAL, [state.gesture, state.longTime]);
+  setDirty(true);
+}
+$('gestureSeg').addEventListener('change', e => { state.gesture = +e.target.value; renderPresetBar(); globalChanged(); });
+$('longTime').onchange = () => { state.longTime = +$('longTime').value; globalChanged(); };
+
+function presetChanged(i) {
+  setDirty(true);
+  pendingSets.add(i);
+  clearTimeout(setTimer);
+  setTimer = setTimeout(flushSets, 120);
+}
+
+function flushSets() {
+  clearTimeout(setTimer);
+  for (const i of pendingSets) sysex(CMD.SET, [i, ...encodePreset(state.presets[i])]);
+  pendingSets.clear();
+}
+
+function setDirty(v) {
+  dirty = v;
+  const h = $('hint');
+  h.textContent = !connected ? (dirty ? 'Nicht verbunden – beim Verbinden werden die Werte vom Controller geladen.' : '')
+    : dirty ? 'Nicht gespeichert – geht beim Abstecken verloren.' : 'Gespeichert.';
+  h.classList.toggle('dirty', dirty);
+}
+
+function setStatus(text, ok) {
+  $('status').textContent = text;
+  $('status').classList.toggle('ok', !!ok);
+}
+
+// ---- SysEx-Kodierung (muss zum Sketch passen) ----
+function putName(arr, s) {
+  const b = enc.encode(s);
+  for (let c = 0; c < NAME_LEN; c++) { const x = b[c] || 0; arr.push(x >> 4, x & 0x0F); }
+}
+function getName(d, n) {
+  const b = [];
+  for (let c = 0; c < NAME_LEN; c++) b.push((d[n + c * 2] << 4) | d[n + c * 2 + 1]);
+  const end = b.indexOf(0);
+  return dec.decode(new Uint8Array(end < 0 ? b : b.slice(0, end)));
+}
+
+function encodePreset(p) {
+  const a = [];
+  putName(a, p.name);
+  for (const list of p.axes) for (const t of list) {
+    a.push(t.on ? 1 : 0, t.type, t.cc & 0x7F, t.channel & 0x0F, t.curve, t.invert ? 1 : 0, t.hiRes ? 1 : 0, t.amount);
+    putName(a, t.name);
+  }
+  for (const t of p.button) {
+    a.push(t.on ? 1 : 0, t.type, t.number & 0x7F, t.channel & 0x0F);
+    putName(a, t.name);
+  }
+  return a;
+}
+
+function decodePreset(d, n) {
+  const p = { name: getName(d, n), axes: [], button: [] };
+  n += NAME_LEN * 2;
+  for (let a = 0; a < AXES.length; a++) {
+    const list = [];
+    for (let i = 0; i < AXIS_TARGETS; i++) {
+      const t = { on: d[n], type: d[n + 1], cc: d[n + 2], channel: d[n + 3], curve: d[n + 4], invert: d[n + 5], hiRes: d[n + 6], amount: d[n + 7] };
+      t.name = getName(d, n + 8);
+      n += 8 + NAME_LEN * 2;
+      list.push(t);
+    }
+    p.axes.push(list);
+  }
+  for (let i = 0; i < BUTTON_TARGETS; i++) {
+    const t = { on: d[n], type: d[n + 1], number: d[n + 2], channel: d[n + 3] };
+    t.name = getName(d, n + 4);
+    n += 4 + NAME_LEN * 2;
+    p.button.push(t);
+  }
+  return p;
+}
+
+function sysex(cmd, data = []) { if (midiOut) midiOut.send([...HDR, cmd, ...data, 0xF7]); }
+
+// ---- Eingehende Nachrichten ----
+function onMessage(e) {
+  const d = e.data;
+  if (d[0] === 0xF0) {
+    if (!HDR.every((b, i) => d[i] === b)) return;
+    if (d[4] === CMD.PRESET && d[5] < PRESETS) state.presets[d[5]] = decodePreset(d, 6);
+    else if (d[4] === CMD.STATE) onState(d);
+    else if (d[4] === CMD.LIVE) onLive(d);
+    return;
+  }
+  showValues(d);
+}
+
+function onState(d) {
+  const changed = state.active !== d[5];
+  state.active = d[5]; state.gesture = d[6]; state.longTime = d[7];
+  if (!connected) {
+    connected = true;
+    setStatus('Verbunden mit ' + midiIn.name, true);
+    ['saveBtn', 'reloadBtn', 'resetBtn'].forEach(id => $(id).disabled = false);
+    setDirty(false);
+  }
+  if (changed) openDetails.clear();
+  if (changed || awaitingDump) { awaitingDump = false; renderAll(); }
+  else renderPresetBar();
+}
+
+// ---- Live-Ansicht ----
+// Position pro Achse -1 … 1. Ohne Rohwerte aus den gesendeten MIDI-Werten geschätzt.
+const axisPos = [0, 0, 0];
+let rawOn = false;
+try { rawOn = localStorage.getItem('kk-raw') === '1'; } catch (e) {}
+$('rawOn').checked = rawOn;
+$('rawOn').onchange = () => {
+  rawOn = $('rawOn').checked;
+  try { localStorage.setItem('kk-raw', rawOn ? '1' : '0'); } catch (e) {}
+  if (rawOn && connected) sysex(CMD.MONITOR);
+};
+
+function drawLive() {
+  const [y, x, r] = axisPos.map(v => Math.max(-1, Math.min(1, v)));
+  $('dot').style.left = (50 + x * 50) + '%';
+  $('dot').style.top = (50 - y * 50) + '%';
+  $('hand').style.transform = `rotate(${r * 135}deg)`;
+  $('dot').classList.toggle('moving', Math.abs(x) > .05 || Math.abs(y) > .05);
+  $('dial').classList.toggle('moving', Math.abs(r) > .05);
+}
+
+// Echte Joystick-Positionen (12 Bit) vom Controller
+function onLive(d) {
+  if (!rawOn) return;
+  for (let a = 0; a < 3; a++) axisPos[a] = (((d[5 + a * 2] << 6) | d[6 + a * 2]) - 2048) / 2048;
+  $('key').classList.toggle('on', !!d[11]);
+  drawLive();
+}
+
+// Position aus einem gesendeten Wert schätzen (u = 0 … 1, bei Pitchbend -1 … 1)
+function estimate(a, type, u) {
+  if (rawOn) return;
+  axisPos[a] = type === AT.CC ? u * 2 - 1 : type === AT.CC_PLUS ? u : type === AT.CC_MINUS ? -u
+    : type === AT.PB_MINUS ? -Math.abs(u) : u;
+  drawLive();
+}
+
+// Gesendete MIDI-Werte den Zielen zuordnen
+function showValues(d) {
+  const p = P(), type = d[0] & 0xF0, ch = d[0] & 0x0F;
+  const eachAxis = fn => p.axes.forEach((list, a) => list.forEach((t, i) => { if (t.on && t.channel === ch) fn(t, `a.${a}.${i}`, a); }));
+  const eachButton = fn => p.button.forEach((t, i) => { if (t.on && t.channel === ch) fn(t, `b.${i}`); });
+  const key = on => { if (!rawOn) $('key').classList.toggle('on', on); };
+
+  if (type === 0xE0) {
+    const v = ((d[2] << 7) | d[1]) - 8192;
+    eachAxis((t, k, a) => { if (isPB(t.type)) { showValue(k, v); estimate(a, t.type, v / 8192); } });
+    showLast(`Pitchbend ${v}`, ch);
+  } else if (type === 0xB0) {
+    const [, cc, val] = d;
+    eachAxis((t, k, a) => {
+      if (isPB(t.type)) return;
+      const hi = t.hiRes && t.cc < 32;
+      if (t.cc === cc) {
+        if (hi) msb[`${ch}.${cc}`] = val;
+        showValue(k, hi ? val << 7 : val);
+        estimate(a, t.type, val / 127);
+      } else if (hi && t.cc + 32 === cc) {
+        const v = ((msb[`${ch}.${t.cc}`] || 0) << 7) | val;
+        showValue(k, v);
+        estimate(a, t.type, v / 16383);
+      }
+    });
+    eachButton((t, k) => { if (t.type <= BT.CC_TOGGLE && t.number === cc) { showValue(k, val); key(val > 63); } });
+    showLast(`CC ${cc} = ${val}`, ch);
+  } else if (type === 0x90 || type === 0x80) {
+    const on = type === 0x90 && d[2] > 0;
+    eachButton((t, k) => { if (isNote(t.type) && t.number === d[1]) { showValue(k, on ? 'an' : 'aus'); key(on); } });
+    showLast(`Note ${d[1]} ${on ? 'an' : 'aus'}`, ch);
+  } else if (type === 0xC0) {
+    eachButton((t, key) => { if (t.type === BT.PROGRAM && t.number === d[1]) showValue(key, d[1]); });
+    showLast(`Programm ${d[1]}`, ch);
+  }
+}
+
+const hitTimers = {};
+function showValue(key, v) {
+  const el = document.querySelector(`[data-val="${key}"]`);
+  if (!el) return;
+  el.textContent = v;
+  el.classList.add('hit');
+  clearTimeout(hitTimers[key]);
+  hitTimers[key] = setTimeout(() => el.classList.remove('hit'), 200);
+}
+
+function showLast(text, ch) { $('last').textContent = `Zuletzt: ${text} · Kanal ${ch + 1}`; }
+
+// ---- Datei Export / Import ----
+$('exportBtn').onclick = () => {
+  flushSets();
+  const data = { format: 'kosmos-kontroller', version: 2, gesture: state.gesture, longTime: state.longTime, presets: state.presets };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `kosmos-kontroller-${new Date().toISOString().slice(0, 10)}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+};
+
+$('importBtn').onclick = () => $('importFile').click();
+$('importFile').onchange = async e => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  try {
+    const data = JSON.parse(await file.text());
+    if (data.format !== 'kosmos-kontroller' || !Array.isArray(data.presets)) throw new Error('keine Kosmos-Kontroller-Datei');
+    if (data.version !== 2) throw new Error('Datei stammt aus einer älteren Version');
+    state.presets = Array.from({ length: PRESETS }, (_, i) => normalizePreset(data.presets[i], i));
+    state.gesture = clampInt(data.gesture, 0, 2, 1);
+    state.longTime = clampInt(data.longTime, 20, 127, 60);
+    openDetails.clear();
+    renderAll();
+    for (let i = 0; i < PRESETS; i++) pendingSets.add(i);
+    flushSets();
+    sysex(CMD.GLOBAL, [state.gesture, state.longTime]);
+    setDirty(true);
+    $('err').textContent = '';
+  } catch (err) {
+    $('err').textContent = 'Import fehlgeschlagen: ' + err.message;
+  }
+};
+
+// Fehlende oder ungültige Werte aus der Datei mit Standardwerten auffüllen
+function normalizePreset(raw, i) {
+  const d = defaultPreset(i);
+  if (!raw || typeof raw !== 'object') return d;
+  const str = v => fitName(typeof v === 'string' ? v : '');
+  return {
+    name: typeof raw.name === 'string' ? fitName(raw.name) : d.name,
+    axes: d.axes.map((list, a) => list.map((t, k) => {
+      const r = ((raw.axes || [])[a] || [])[k] || {};
+      return {
+        on: r.on ? 1 : 0, type: clampInt(r.type, 0, AXIS_TYPES.length - 1, t.type),
+        cc: clampInt(r.cc, 0, 127, t.cc), channel: clampInt(r.channel, 0, 15, t.channel),
+        curve: clampInt(r.curve, 0, CURVES.length - 1, 0), invert: r.invert ? 1 : 0, hiRes: r.hiRes ? 1 : 0,
+        amount: clampInt(r.amount, 0, 100, 100), name: str(r.name),
+      };
+    })),
+    button: d.button.map((t, k) => {
+      const r = (raw.button || [])[k] || {};
+      return {
+        on: r.on ? 1 : 0, type: clampInt(r.type, 0, BUTTON_TYPES.length - 1, t.type),
+        number: clampInt(r.number, 0, 127, t.number), channel: clampInt(r.channel, 0, 15, t.channel), name: str(r.name),
+      };
+    }),
+  };
+}
+
+// ---- Verbindung ----
+function fillPortSelects() {
+  const fill = (sel, ports, cur) => {
+    sel.innerHTML = ports.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('') || '<option value="">kein Gerät</option>';
+    const pick = (cur && ports.find(p => p.id === cur.id)) || ports.find(p => /kosmos/i.test(p.name)) || ports[0];
+    if (pick) sel.value = pick.id;
+  };
+  fill($('inSel'), [...access.inputs.values()], midiIn);
+  fill($('outSel'), [...access.outputs.values()], midiOut);
+}
+
+function selectPorts() {
+  if (midiIn) midiIn.onmidimessage = null;
+  connected = false;
+  ['saveBtn', 'reloadBtn', 'resetBtn'].forEach(id => $(id).disabled = true);
+  midiIn = access.inputs.get($('inSel').value) || null;
+  midiOut = access.outputs.get($('outSel').value) || null;
+  if (!midiIn || !midiOut) { setStatus('Kosmos Kontroller nicht gefunden'); $('ports').classList.add('show'); return; }
+  midiIn.onmidimessage = onMessage;
+  setStatus('Warte auf Antwort …');
+  awaitingDump = true;
+  sysex(CMD.GET);
+  if (rawOn) sysex(CMD.MONITOR);
+  setTimeout(() => {
+    if (!connected) { setStatus('Keine Antwort – richtiger Port, Sketch joystick_webconfig aufgespielt?'); $('ports').classList.add('show'); }
+  }, 2000);
+}
+
+async function connect() {
+  $('err').textContent = '';
+  if (!navigator.requestMIDIAccess) { $('err').textContent = 'Dieser Browser kann kein Web MIDI. Bitte Chrome verwenden.'; return; }
+  try {
+    access = await navigator.requestMIDIAccess({ sysex: true });
+  } catch (e) {
+    $('err').textContent = 'MIDI-Zugriff verweigert: ' + e.message;
+    return;
+  }
+  $('connectBtn').hidden = true;
+  $('portsBtn').hidden = false;
+  fillPortSelects();
+  selectPorts();
+  access.onstatechange = () => {
+    const before = $('inSel').value + $('outSel').value;
+    fillPortSelects();
+    if (before !== $('inSel').value + $('outSel').value || (midiIn && midiIn.state === 'disconnected')) selectPorts();
+  };
+  // Lebenszeichen, damit der Controller Rohwerte schickt (nur wenn eingeschaltet)
+  setInterval(() => { if (connected && rawOn) sysex(CMD.MONITOR); }, 1000);
+}
+
+$('connectBtn').onclick = connect;
+$('portsBtn').onclick = () => $('ports').classList.toggle('show');
+$('inSel').onchange = selectPorts;
+$('outSel').onchange = selectPorts;
+$('saveBtn').onclick = () => { flushSets(); sysex(CMD.SAVE); setDirty(false); };
+$('reloadBtn').onclick = () => { awaitingDump = true; sysex(CMD.GET); setDirty(false); };
+$('resetBtn').onclick = () => {
+  if (confirm('Alle 4 Presets, Namen und Einstellungen auf Werkseinstellungen zurücksetzen?')) {
+    awaitingDump = true; openDetails.clear(); sysex(CMD.RESET); setDirty(false);
+  }
+};
+
+renderAll();
+
+// Offline-Cache und App-Installation (nur über https, nicht als lokale Datei)
+if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js');
+</script>
+</body>
+</html>
