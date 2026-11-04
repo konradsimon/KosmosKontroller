@@ -88,16 +88,24 @@
   .ports.show { display: flex; }
 
   /* ---------- Presets ---------- */
-  .presets { display: flex; align-items: center; gap: 12px 16px; flex-wrap: wrap; padding: 16px 0; border-bottom: 1px solid var(--rule); }
-  .tabs { display: inline-flex; border: 1px solid var(--ink); max-width: 100%; }
+  /* Preset panel in the left column */
+  .presets { margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--rule); display: grid; gap: 8px; }
+  .presets .label { margin: 0; }
+  .tabs { display: grid; border: 1px solid var(--ink); }
   .tabs button {
-    border: 0; height: 34px; padding: 0 14px; width: 150px; text-align: left;
+    border: 0; height: 34px; padding: 0 12px; text-align: left;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
-  .tabs button + button { border-left: 1px solid var(--ink); }
+  .tabs button + button { border-top: 1px solid var(--ink); }
   .tabs button.on { background: var(--ink); color: var(--paper); }
-  .tabs button .n { font-weight: 700; margin-right: 6px; }
-  .presets .pname { width: 200px; }
+  .tabs button .n { font-weight: 700; margin-right: 8px; }
+  .presets .pname { width: 100%; }
+  .presets .label + .seg, .presets .seg + select { margin-top: -2px; }
+  .presets .seg { display: flex; }
+  .presets .seg label { flex: 1; }
+  .presets .seg span { text-align: center; padding: 5px 4px; font-size: 14px; }
+  .presets select { width: 100%; }
+  .presets .gap { height: 8px; }
 
   .seg { display: inline-flex; border: 1px solid var(--ink); }
   .seg label { position: relative; }
@@ -138,8 +146,6 @@
   .empty { color: var(--muted); }
   .dupnote { color: var(--signal); font-size: 13px; }
   .dupnote:not(:empty) { padding-top: 8px; }
-  .opts { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; font-size: 14px; color: var(--muted); }
-  .opts select { height: 32px; padding: 4px 6px; }
 
   .grid { display: grid; grid-template-columns: minmax(0, 1fr) 176px 68px 96px 64px 80px; gap: 8px; align-items: center; }
   .thead { font-size: 12px; color: var(--muted); padding-bottom: 4px; }
@@ -216,10 +222,6 @@
   </header>
   <div class="err" id="err"></div>
 
-  <div class="presets">
-    <div class="tabs" id="tabs"></div>
-    <input class="pname" id="presetName" placeholder="Preset name" title="Name of the active preset">
-  </div>
 
   <main>
     <aside class="live">
@@ -255,6 +257,16 @@
       <div class="livefoot">
         <div class="last" id="last"></div>
         <button class="chip" id="rawOn" title="Shows the real joystick positions, even without targets. The controller then sends SysEx continuously, which is also visible in Ableton.">Raw values</button>
+      </div>
+
+      <div class="presets">
+        <h3 class="label">Presets</h3>
+        <div class="tabs" id="tabs"></div>
+        <input class="pname" id="presetName" placeholder="Preset name" title="Name of the active preset">
+        <div class="gap"></div>
+        <h3 class="label">Switch preset on the button</h3>
+        <div class="seg" id="gestureSeg"></div>
+        <select id="longTime" title="Long press duration"></select>
       </div>
     </aside>
 
@@ -429,16 +441,6 @@ function buttonRow(i) {
     </div>`;
 }
 
-// How the preset is switched on the button (global setting, shown in the button block)
-function gestureHtml() {
-  const seg = GESTURES.map((g, i) =>
-    `<label><input type="radio" name="gesture" value="${i}" data-g="gesture" ${i === state.gesture ? 'checked' : ''}><span>${g}</span></label>`).join('');
-  const time = state.gesture === 1
-    ? `<select data-g="longTime" title="Long press duration">${LONG_TIMES.map(v => `<option value="${v}" ${v === state.longTime ? 'selected' : ''}>${v * 10} ms</option>`).join('')}</select>`
-    : '';
-  return `<div class="opts"><span>Switch preset</span><div class="seg">${seg}</div>${time}</div>`;
-}
-
 function renderBlock(b) {
   let el = $('blk' + b);
   if (!el) {
@@ -455,7 +457,6 @@ function renderBlock(b) {
   const head = `<div class="grid thead"><span>Name</span><span>Type</span><span>${isButton ? 'Number' : 'CC'}</span><span>Channel</span><span>Value</span><span></span></div>`;
   const rows = used.map(i => isButton ? buttonRow(i) : axisRow(b, i)).join('');
   el.innerHTML = `<div class="block-head"><h2>${title}</h2>${add}</div>` +
-    (isButton ? gestureHtml() : '') +
     (used.length ? head + rows : '<div class="empty">No targets – sends nothing.</div>') +
     '<div class="dupnote"></div>';
   markConflicts();
@@ -504,6 +505,10 @@ function renderPresetBar() {
   $('tabs').innerHTML = state.presets.map((p, i) =>
     `<button class="${i === state.active ? 'on' : ''}" data-preset="${i}" title="${esc(p.name || '')}"><span class="n">${i + 1}</span>${esc(p.name || '')}</button>`).join('');
   if (document.activeElement !== $('presetName')) $('presetName').value = P().name;
+  $('gestureSeg').innerHTML = GESTURES.map((g, i) =>
+    `<label><input type="radio" name="gesture" value="${i}" ${i === state.gesture ? 'checked' : ''}><span>${g}</span></label>`).join('');
+  $('longTime').hidden = state.gesture !== 1;
+  $('longTime').value = state.longTime;
 }
 
 function renderAll() {
@@ -551,16 +556,15 @@ $('blocks').addEventListener('input', e => {
   presetChanged(state.active);
 });
 
-// Preset switching gesture on the button
-$('blocks').addEventListener('change', e => {
-  const g = e.target.dataset.g;
-  if (!g) return;
-  if (g === 'gesture') state.gesture = +e.target.value;
-  else state.longTime = +e.target.value;
-  renderBlock(BUTTON_BLOCK);
+// How the preset is switched on the button (global setting)
+$('longTime').innerHTML = LONG_TIMES.map(v => `<option value="${v}">Long press ${v * 10} ms</option>`).join('');
+function globalChanged() {
+  renderPresetBar();
   sysex(CMD.GLOBAL, [state.gesture, state.longTime]);
   setDirty(true);
-});
+}
+$('gestureSeg').addEventListener('change', e => { state.gesture = +e.target.value; globalChanged(); });
+$('longTime').onchange = () => { state.longTime = +$('longTime').value; globalChanged(); };
 
 $('blocks').addEventListener('click', e => {
   const btn = e.target.closest('button');
@@ -714,7 +718,6 @@ function onMessage(e) {
 
 function onState(d) {
   const changed = state.active !== d[5];
-  const globalChanged = state.gesture !== d[6] || state.longTime !== d[7];
   state.active = d[5]; state.gesture = d[6]; state.longTime = d[7];
   if (!connected) {
     connected = true;
@@ -724,10 +727,7 @@ function onState(d) {
   }
   if (changed) openDetails.clear();
   if (changed || awaitingDump) { awaitingDump = false; renderAll(); }
-  else {
-    renderPresetBar();
-    if (globalChanged) renderBlock(BUTTON_BLOCK);
-  }
+  else renderPresetBar();
 }
 
 // ---- Live view ----
