@@ -53,7 +53,8 @@ midi::MidiInterface<midi::SerialMIDI<Adafruit_USBD_MIDI>, KontrollerSettings> MI
 #define CMD_MONITOR      0x09   // Browser -> Controller: Lebenszeichen, Live-Positionen senden
 #define CMD_LIVE         0x0A   // Controller -> Browser: 3 x Achse (2 x 6 Bit), Taster
 
-#define CONFIG_MAGIC     0x4B4B0004
+#define CONFIG_MAGIC     0x4B4B0005
+#define PB_RANGE         12     // Halbtöne: Pitchbend-Bereich im Synth (eine Oktave)
 #define NAME_LEN         16     // Bytes (UTF-8), über SysEx als Nibbles übertragen
 #define PRESET_COUNT     4
 #define AXIS_COUNT       3
@@ -101,7 +102,8 @@ struct AxisTarget {
   byte curve;
   byte invert;
   byte hiRes;            // 14 Bit (CC n + CC n+32), nur CC 0-31
-  byte amount;           // Stärke 0-100 %
+  byte amount;           // CC: Stärke 0-100 %, Pitchbend: Halbtöne 0-PB_RANGE
+  byte muted;            // stumm: eingestellt, sendet aber nichts (z. B. für MIDI-Learn)
   char name[NAME_LEN];
 };
 
@@ -110,6 +112,7 @@ struct ButtonTarget {
   byte type;
   byte number;           // CC / Note / Programm
   byte channel;          // 1-16
+  byte muted;
   char name[NAME_LEN];
 };
 
@@ -136,7 +139,7 @@ void setAxisTarget(AxisTarget& t, byte type, byte cc, byte channel) {
   t.type = type;
   t.cc = cc;
   t.channel = channel;
-  t.amount = 100;
+  t.amount = type <= AT_PB_MINUS ? PB_RANGE : 100;
 }
 
 // Werkseinstellungen = Verhalten des alten Sketches
@@ -250,10 +253,10 @@ void sendProgram(byte channel, byte program) {
 // =======================================================
 // Preset-Daten (CMD_PRESET und CMD_SET):
 //   Name (NAME_LEN x 2 Nibbles)
-//   AXIS_COUNT x AXIS_TARGETS x [an, Art, CC, Kanal 0-15, Kurve, Umkehren, 14 Bit, Stärke, Name]
-//   BUTTON_TARGETS x [an, Art, Nummer, Kanal 0-15, Name]
-#define AXIS_TARGET_BYTES    (8 + NAME_LEN * 2)
-#define BUTTON_TARGET_BYTES  (4 + NAME_LEN * 2)
+//   AXIS_COUNT x AXIS_TARGETS x [an, Art, CC, Kanal 0-15, Kurve, Umkehren, 14 Bit, Stärke, stumm, Name]
+//   BUTTON_TARGETS x [an, Art, Nummer, Kanal 0-15, stumm, Name]
+#define AXIS_TARGET_BYTES    (9 + NAME_LEN * 2)
+#define BUTTON_TARGET_BYTES  (5 + NAME_LEN * 2)
 #define PRESET_BYTES  (NAME_LEN * 2 + AXIS_COUNT * AXIS_TARGETS * AXIS_TARGET_BYTES + BUTTON_TARGETS * BUTTON_TARGET_BYTES)
 
 void putName(byte* m, int& n, const char* name) {
@@ -299,6 +302,7 @@ void sendPreset(int index) {
       msg[n++] = t.invert ? 1 : 0;
       msg[n++] = t.hiRes ? 1 : 0;
       msg[n++] = t.amount & 0x7F;
+      msg[n++] = t.muted ? 1 : 0;
       putName(msg, n, t.name);
     }
   }
@@ -308,6 +312,7 @@ void sendPreset(int index) {
     msg[n++] = t.type;
     msg[n++] = t.number & 0x7F;
     msg[n++] = (t.channel - 1) & 0x0F;
+    msg[n++] = t.muted ? 1 : 0;
     putName(msg, n, t.name);
   }
   sendHeader(CMD_PRESET);
@@ -329,7 +334,9 @@ void readPreset(Preset& p, const byte* d) {
       t.invert  = d[n++] ? 1 : 0;
       t.hiRes   = d[n++] ? 1 : 0;
       byte amount = d[n++];
-      t.amount  = amount > 100 ? 100 : amount;
+      byte maxAmount = t.type <= AT_PB_MINUS ? PB_RANGE : 100;
+      t.amount  = amount > maxAmount ? maxAmount : amount;
+      t.muted   = d[n++] ? 1 : 0;
       getName(d, n, t.name);
     }
   }
@@ -339,6 +346,7 @@ void readPreset(Preset& p, const byte* d) {
     t.type    = clampByte(d[n++], BT_COUNT);
     t.number  = d[n++] & 0x7F;
     t.channel = (d[n++] & 0x0F) + 1;
+    t.muted   = d[n++] ? 1 : 0;
     getName(d, n, t.name);
   }
 }
@@ -364,6 +372,7 @@ bool isToggleType(byte type) { return type == BT_CC_TOGGLE || type == BT_NOTE_TO
 
 void sendButtonTarget(int i, bool on) {
   const ButtonTarget& t = active().button[i];
+  if (t.muted) return;
   switch (t.type) {
     case BT_CC_HOLD:
     case BT_CC_TOGGLE:   sendCC(t.channel, t.number, on ? 127 : 0); break;
@@ -625,12 +634,13 @@ void processAxis(int axis, int smoothValue) {
 
   for (int i = 0; i < AXIS_TARGETS; i++) {
     const AxisTarget& t = active().axis[axis][i];
-    if (!t.on) continue;
+    if (!t.on || t.muted) continue;
 
     bool isPB = t.type <= AT_PB_MINUS;
     float v = isPB ? posPB : posCC;
     if (t.invert) v = -v;
-    float amount = t.amount / 100.0f;
+    // Pitchbend: Halbtöne bezogen auf den Bereich im Synth, CC: Prozent
+    float amount = isPB ? t.amount / (float)PB_RANGE : t.amount / 100.0f;
 
     switch (t.type) {
       case AT_PB:       sendTargetPB(axis, i, signedCurve(v, t.curve) * amount); break;

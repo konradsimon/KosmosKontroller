@@ -129,7 +129,7 @@
   .dupnote { color: var(--signal); font-size: 13px; }
   .dupnote:not(:empty) { padding-top: 8px; }
 
-  .grid { display: grid; grid-template-columns: minmax(0, 1fr) 176px 68px 108px 64px 52px; gap: 8px; align-items: center; }
+  .grid { display: grid; grid-template-columns: minmax(0, 1fr) 176px 68px 108px 64px 80px; gap: 8px; align-items: center; }
   .thead { font-size: 12px; color: var(--muted); padding: 4px 0; }
   .thead span:nth-child(5) { text-align: right; }
   .trow { padding: 4px 0; }
@@ -141,6 +141,10 @@
   .acts button { border: 0; height: 34px; width: 24px; padding: 0; color: var(--muted); font-size: 16px; }
   .acts button:hover { background: none; color: var(--ink); }
   .acts button.open { color: var(--ink); }
+  .acts .mute { font-size: 12px; font-weight: 700; width: 22px; height: 22px; border: 1px solid var(--rule); }
+  .acts .mute:hover { border-color: var(--ink); }
+  .acts .mute.on { background: var(--signal); border-color: var(--signal); color: #fff; }
+  .trow.muted > :not(.acts) { opacity: .35; }
 
   .sub { font-size: 13px; color: var(--muted); padding: 0 0 6px 10px; }
   .details {
@@ -275,8 +279,17 @@ const CURVES = [
 ];
 
 // ---- Zustand ----
-const axisTarget = (on, type, cc, channel) => ({ on, type, cc, channel, curve: 0, invert: 0, hiRes: 0, amount: 100, name: '' });
-const buttonTarget = (on, type, number, channel) => ({ on, type, number, channel, name: '' });
+// Stärke: Pitchbend in Halbtönen (Bereich im Synth = 1 Oktave), CC in Prozent
+const PB_RANGE = 12;
+const fullAmount = type => isPB(type) ? PB_RANGE : 100;
+const INTERVALS = ['', 'kleine Sekunde', 'große Sekunde', 'kleine Terz', 'große Terz', 'Quarte', 'Tritonus',
+  'Quinte', 'kleine Sexte', 'große Sexte', 'kleine Septime', 'große Septime', 'Oktave'];
+const amountLabel = t => isPB(t.type)
+  ? (t.amount ? `${t.amount} ${t.amount === 1 ? 'Halbton' : 'Halbtöne'} · ${INTERVALS[t.amount]}` : 'aus')
+  : `${t.amount} %`;
+
+const axisTarget = (on, type, cc, channel) => ({ on, type, cc, channel, curve: 0, invert: 0, hiRes: 0, amount: fullAmount(type), muted: 0, name: '' });
+const buttonTarget = (on, type, number, channel) => ({ on, type, number, channel, muted: 0, name: '' });
 
 // Werkseinstellungen = Sketch (Kanal 0–15)
 function defaultPreset(i) {
@@ -324,7 +337,7 @@ function curveSvg(c) {
 function summary(t) {
   const parts = [];
   if (t.curve) parts.push(CURVES[t.curve][0]);
-  if (t.amount !== 100) parts.push(`Stärke ${t.amount} %`);
+  if (t.amount !== fullAmount(t.type)) parts.push(isPB(t.type) ? amountLabel(t) : `Stärke ${t.amount} %`);
   if (t.invert) parts.push('umgekehrt');
   if (t.hiRes && !isPB(t.type)) parts.push(t.cc < 32 ? '14 Bit' : '14 Bit (nur CC 0–31)');
   return parts.join(' · ');
@@ -334,7 +347,7 @@ function axisRow(a, i) {
   const t = P().axes[a][i], key = `a.${a}.${i}`, base = `axes.${a}.${i}`;
   const open = openDetails.has(key);
   const row = `
-    <div class="grid trow">
+    <div class="grid trow ${t.muted ? 'muted' : ''}">
       <input class="tname" data-p="${base}.name" data-str value="${esc(t.name)}" placeholder="Name">
       <select data-p="${base}.type">${options(AXIS_TYPES, t.type)}</select>
       ${isPB(t.type) ? '<span class="none">–</span>'
@@ -342,6 +355,7 @@ function axisRow(a, i) {
       <select data-p="${base}.channel">${channelOptions(t.channel)}</select>
       <div class="val" data-val="${key}">–</div>
       <div class="acts">
+        ${muteButton(key, t)}
         <button class="${open ? 'open' : ''}" data-details="${key}" title="Kurve, Stärke, Umkehren${isPB(t.type) ? '' : ', 14 Bit'}">⋯</button>
         <button data-rm="${key}" title="Ziel entfernen">×</button>
       </div>
@@ -353,23 +367,28 @@ function axisRow(a, i) {
   return row + `
     <div class="details">
       <label>Kurve <select data-p="${base}.curve">${options(CURVES.map(c => c[0]), t.curve)}</select>${curveSvg(t.curve)}</label>
-      <label>Stärke <input type="range" min="0" max="100" step="5" value="${t.amount}" data-p="${base}.amount"><span data-amount>${t.amount} %</span></label>
+      ${isPB(t.type)
+        ? `<label title="Bezogen auf einen Pitchbend-Bereich von ±12 Halbtönen im Synth">Stärke <input type="range" min="0" max="${PB_RANGE}" step="1" value="${t.amount}" data-p="${base}.amount"><span data-amount>${amountLabel(t)}</span></label>`
+        : `<label>Stärke <input type="range" min="0" max="100" step="5" value="${t.amount}" data-p="${base}.amount"><span data-amount>${amountLabel(t)}</span></label>`}
       <label><input type="checkbox" data-p="${base}.invert" ${t.invert ? 'checked' : ''}> Umkehren</label>
       ${isPB(t.type) ? '' : `<label title="Sendet CC n und CC n+32 – nur CC 0–31"><input type="checkbox" data-p="${base}.hiRes" ${t.hiRes ? 'checked' : ''}> 14 Bit</label>`}
     </div>`;
 }
 
+const muteButton = (key, t) =>
+  `<button class="mute ${t.muted ? 'on' : ''}" data-mute="${key}" title="${t.muted ? 'Stumm – sendet nichts. Klicken zum Einschalten' : 'Stumm schalten, z. B. für MIDI-Learn'}">M</button>`;
+
 function buttonRow(i) {
   const t = P().button[i], key = `b.${i}`, base = `button.${i}`;
   const title = isNote(t.type) ? 'Note' : t.type === BT.PROGRAM ? 'Programm' : 'CC-Nummer';
   return `
-    <div class="grid trow">
+    <div class="grid trow ${t.muted ? 'muted' : ''}">
       <input class="tname" data-p="${base}.name" data-str value="${esc(t.name)}" placeholder="Name">
       <select data-p="${base}.type">${options(BUTTON_TYPES, t.type)}</select>
       <input type="number" min="0" max="127" value="${t.number}" data-p="${base}.number" title="${title}">
       <select data-p="${base}.channel">${channelOptions(t.channel)}</select>
       <div class="val" data-val="${key}">–</div>
-      <div class="acts"><button data-rm="${key}" title="Ziel entfernen">×</button></div>
+      <div class="acts">${muteButton(key, t)}<button data-rm="${key}" title="Ziel entfernen">×</button></div>
     </div>`;
 }
 
@@ -472,10 +491,18 @@ $('blocks').addEventListener('input', e => {
     if (Number.isNaN(v)) return;
     if (/\.(cc|number)$/.test(path)) v = clampInt(v, 0, 127, 0);
   }
+  // Wechsel zwischen Pitchbend und CC: Stärke auf voll, da andere Einheit
+  if (path.startsWith('axes.') && path.endsWith('.type')) {
+    const [, a, i] = path.split('.').map(Number), tg = P().axes[a][i];
+    if (isPB(tg.type) !== isPB(v)) tg.amount = fullAmount(v);
+  }
   setPath(path, v);
 
   if (RERENDER.test(path)) renderBlock(blockOf(t));
-  else if (path.endsWith('.amount')) t.parentElement.querySelector('[data-amount]').textContent = v + ' %';
+  else if (path.endsWith('.amount')) {
+    const [, a, i] = path.split('.').map(Number);
+    t.parentElement.querySelector('[data-amount]').textContent = amountLabel(P().axes[a][i]);
+  }
   else if (/\.(cc|number|channel)$/.test(path)) markConflicts();
   presetChanged(state.active);
 });
@@ -501,6 +528,12 @@ $('blocks').addEventListener('click', e => {
     const [kind, x, y] = d.rm.split('.');
     if (kind === 'a') P().axes[+x][+y].on = 0; else P().button[+x].on = 0;
     openDetails.delete(d.rm);
+    renderBlock(blockOf(e.target));
+    presetChanged(state.active);
+  } else if (d.mute !== undefined) {
+    const [kind, x, y] = d.mute.split('.');
+    const t = kind === 'a' ? P().axes[+x][+y] : P().button[+x];
+    t.muted = t.muted ? 0 : 1;
     renderBlock(blockOf(e.target));
     presetChanged(state.active);
   } else if (d.details !== undefined) {
@@ -577,11 +610,11 @@ function encodePreset(p) {
   const a = [];
   putName(a, p.name);
   for (const list of p.axes) for (const t of list) {
-    a.push(t.on ? 1 : 0, t.type, t.cc & 0x7F, t.channel & 0x0F, t.curve, t.invert ? 1 : 0, t.hiRes ? 1 : 0, t.amount);
+    a.push(t.on ? 1 : 0, t.type, t.cc & 0x7F, t.channel & 0x0F, t.curve, t.invert ? 1 : 0, t.hiRes ? 1 : 0, t.amount, t.muted ? 1 : 0);
     putName(a, t.name);
   }
   for (const t of p.button) {
-    a.push(t.on ? 1 : 0, t.type, t.number & 0x7F, t.channel & 0x0F);
+    a.push(t.on ? 1 : 0, t.type, t.number & 0x7F, t.channel & 0x0F, t.muted ? 1 : 0);
     putName(a, t.name);
   }
   return a;
@@ -593,17 +626,17 @@ function decodePreset(d, n) {
   for (let a = 0; a < AXES.length; a++) {
     const list = [];
     for (let i = 0; i < AXIS_TARGETS; i++) {
-      const t = { on: d[n], type: d[n + 1], cc: d[n + 2], channel: d[n + 3], curve: d[n + 4], invert: d[n + 5], hiRes: d[n + 6], amount: d[n + 7] };
-      t.name = getName(d, n + 8);
-      n += 8 + NAME_LEN * 2;
+      const t = { on: d[n], type: d[n + 1], cc: d[n + 2], channel: d[n + 3], curve: d[n + 4], invert: d[n + 5], hiRes: d[n + 6], amount: d[n + 7], muted: d[n + 8] };
+      t.name = getName(d, n + 9);
+      n += 9 + NAME_LEN * 2;
       list.push(t);
     }
     p.axes.push(list);
   }
   for (let i = 0; i < BUTTON_TARGETS; i++) {
-    const t = { on: d[n], type: d[n + 1], number: d[n + 2], channel: d[n + 3] };
-    t.name = getName(d, n + 4);
-    n += 4 + NAME_LEN * 2;
+    const t = { on: d[n], type: d[n + 1], number: d[n + 2], channel: d[n + 3], muted: d[n + 4] };
+    t.name = getName(d, n + 5);
+    n += 5 + NAME_LEN * 2;
     p.button.push(t);
   }
   return p;
@@ -729,7 +762,7 @@ function showLast(text, ch) { $('last').textContent = `Zuletzt: ${text} · Kanal
 // ---- Datei Export / Import ----
 $('exportBtn').onclick = () => {
   flushSets();
-  const data = { format: 'kosmos-kontroller', version: 2, gesture: state.gesture, longTime: state.longTime, presets: state.presets };
+  const data = { format: 'kosmos-kontroller', version: 3, gesture: state.gesture, longTime: state.longTime, presets: state.presets };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -746,8 +779,8 @@ $('importFile').onchange = async e => {
   try {
     const data = JSON.parse(await file.text());
     if (data.format !== 'kosmos-kontroller' || !Array.isArray(data.presets)) throw new Error('keine Kosmos-Kontroller-Datei');
-    if (data.version !== 2) throw new Error('Datei stammt aus einer älteren Version');
-    state.presets = Array.from({ length: PRESETS }, (_, i) => normalizePreset(data.presets[i], i));
+    if (data.version !== 2 && data.version !== 3) throw new Error('Datei stammt aus einer älteren Version');
+    state.presets = Array.from({ length: PRESETS }, (_, i) => normalizePreset(data.presets[i], i, data.version));
     state.gesture = clampInt(data.gesture, 0, 2, 1);
     state.longTime = clampInt(data.longTime, 20, 127, 60);
     openDetails.clear();
@@ -763,7 +796,8 @@ $('importFile').onchange = async e => {
 };
 
 // Fehlende oder ungültige Werte aus der Datei mit Standardwerten auffüllen
-function normalizePreset(raw, i) {
+// Version 2: Pitchbend-Stärke war in Prozent, wird in Halbtöne umgerechnet
+function normalizePreset(raw, i, version = 3) {
   const d = defaultPreset(i);
   if (!raw || typeof raw !== 'object') return d;
   const str = v => fitName(typeof v === 'string' ? v : '');
@@ -771,18 +805,22 @@ function normalizePreset(raw, i) {
     name: typeof raw.name === 'string' ? fitName(raw.name) : d.name,
     axes: d.axes.map((list, a) => list.map((t, k) => {
       const r = ((raw.axes || [])[a] || [])[k] || {};
+      const type = clampInt(r.type, 0, AXIS_TYPES.length - 1, t.type);
+      let amount = clampInt(r.amount, 0, 100, 100);
+      if (isPB(type)) amount = version < 3 ? Math.round(amount * PB_RANGE / 100) : Math.min(amount, PB_RANGE);
       return {
-        on: r.on ? 1 : 0, type: clampInt(r.type, 0, AXIS_TYPES.length - 1, t.type),
+        on: r.on ? 1 : 0, type,
         cc: clampInt(r.cc, 0, 127, t.cc), channel: clampInt(r.channel, 0, 15, t.channel),
         curve: clampInt(r.curve, 0, CURVES.length - 1, 0), invert: r.invert ? 1 : 0, hiRes: r.hiRes ? 1 : 0,
-        amount: clampInt(r.amount, 0, 100, 100), name: str(r.name),
+        amount, muted: r.muted ? 1 : 0, name: str(r.name),
       };
     })),
     button: d.button.map((t, k) => {
       const r = (raw.button || [])[k] || {};
       return {
         on: r.on ? 1 : 0, type: clampInt(r.type, 0, BUTTON_TYPES.length - 1, t.type),
-        number: clampInt(r.number, 0, 127, t.number), channel: clampInt(r.channel, 0, 15, t.channel), name: str(r.name),
+        number: clampInt(r.number, 0, 127, t.number), channel: clampInt(r.channel, 0, 15, t.channel),
+        muted: r.muted ? 1 : 0, name: str(r.name),
       };
     }),
   };
