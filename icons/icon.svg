@@ -1,7 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" fill="#151514"/>
-  <rect x="96" y="96" width="320" height="320" fill="none" stroke="#ecebe6" stroke-width="10"/>
-  <line x1="256" y1="96" x2="256" y2="416" stroke="#ecebe6" stroke-opacity=".35" stroke-width="6"/>
-  <line x1="96" y1="256" x2="416" y2="256" stroke="#ecebe6" stroke-opacity=".35" stroke-width="6"/>
-  <circle cx="318" cy="194" r="34" fill="#ea3360"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <!-- Draufsicht des Gehäuses (vereinfacht) -->
+  <rect width="200" height="200" fill="#151514"/>
+  <path fill="none" stroke="#ecebe6" stroke-opacity=".35" stroke-width="3" stroke-linejoin="round"
+    d="M100 30 L149.5 50.5 L170 100 L149.5 149.5 L100 170 L50.5 149.5 L30 100 L50.5 50.5 Z"/>
+  <circle cx="100" cy="100" r="34" fill="#ecebe6"/>
+  <circle cx="100" cy="100" r="10" fill="#ea3360"/>
 </svg>

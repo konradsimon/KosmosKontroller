@@ -102,6 +102,7 @@
   .ctrl { display: block; width: 100%; }
   .ctrl .base { fill: var(--field); stroke: var(--rule); stroke-width: 1.5; }
   .ctrl .line { fill: none; stroke: var(--rule); stroke-width: 1.5; }
+  .ctrl .facet { fill: var(--ink); fill-opacity: .05; }
   .ctrl .grip { fill: var(--ink); }
   .ctrl .band { fill: none; stroke: var(--paper); stroke-opacity: .3; stroke-width: 1.5; }
   .ctrl .mark { stroke: var(--paper); stroke-width: 3; stroke-linecap: round; }
@@ -188,21 +189,28 @@
   <main>
     <aside class="live">
       <h3>Live</h3>
+      <!-- Maße aus kosmosKontroller.blend: Gehäuse 84 mm = 196 Einheiten (2,33 pro mm) -->
       <svg class="ctrl" id="ctrl" viewBox="0 0 200 200" role="img" aria-label="Draufsicht auf den Controller">
         <rect class="base" x="2" y="2" width="196" height="196"/>
-        <path class="line" d="M2 2 L59 59 M198 2 L141 59 M2 198 L59 141 M198 198 L141 141"/>
-        <circle class="line" cx="100" cy="100" r="58"/>
-        <circle class="line" cx="100" cy="100" r="46"/>
+        <!-- Schrägen zwischen Gehäusekante und achteckigem Plateau -->
+        <path class="facet" fill-rule="evenodd" d="M2 2 H198 V198 H2 Z M100 16 L158.3 41.7 L184 100 L158.3 158.3 L100 184 L41.7 158.3 L16 100 L41.7 41.7 Z"/>
+        <path class="line" d="M100 16 L158.3 41.7 L184 100 L158.3 158.3 L100 184 L41.7 158.3 L16 100 L41.7 41.7 Z
+          M2 2 L41.7 41.7 M198 2 L158.3 41.7 M198 198 L158.3 158.3 M2 198 L41.7 158.3
+          M100 2 V16 M198 100 H184 M100 198 V184 M2 100 H16"/>
+        <!-- Flansch mit Schraubenlöchern und Öffnung -->
+        <circle class="line" cx="100" cy="100" r="62"/>
+        <circle class="line" cx="100" cy="100" r="42"/>
         <g class="line">
-          <circle cx="63" cy="63" r="2.5"/><circle cx="137" cy="63" r="2.5"/>
-          <circle cx="63" cy="137" r="2.5"/><circle cx="137" cy="137" r="2.5"/>
+          <circle cx="61.5" cy="61.5" r="3"/><circle cx="138.5" cy="61.5" r="3"/>
+          <circle cx="61.5" cy="138.5" r="3"/><circle cx="138.5" cy="138.5" r="3"/>
         </g>
-        <text x="104" y="14">Y</text><text x="186" y="96">X</text>
+        <text x="104" y="12">Y</text><text x="189" y="96">X</text>
+        <!-- Griff von oben: Körper, Ring, Drehmarke, Taster-Kappe -->
         <g id="grip" transform="translate(100 100)">
-          <circle class="grip" r="30"/>
+          <circle class="grip" r="40"/>
           <circle class="band" r="23"/>
-          <g id="spin"><line class="mark" x1="0" y1="-13" x2="0" y2="-27"/></g>
-          <circle class="cap" id="cap" r="8"/>
+          <g id="spin"><line class="mark" x1="0" y1="-16" x2="0" y2="-36"/></g>
+          <circle class="cap" id="cap" r="11.5"/>
         </g>
       </svg>
       <div class="last" id="last"></div>
@@ -637,7 +645,8 @@ $('rawOn').onchange = () => {
 
 function drawLive() {
   const [y, x, r] = axisPos.map(v => Math.max(-1, Math.min(1, v)));
-  $('grip').setAttribute('transform', `translate(${100 + x * 40} ${100 - y * 40})`);
+  // Griff bleibt bei Vollausschlag innerhalb des Flanschs
+  $('grip').setAttribute('transform', `translate(${100 + x * 22} ${100 - y * 22})`);
   $('spin').setAttribute('transform', `rotate(${r * 135})`);
   $('ctrl').classList.toggle('moving', [x, y, r].some(v => Math.abs(v) > .05));
 }
