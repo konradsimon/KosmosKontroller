@@ -128,6 +128,8 @@
   .block-head h2 { margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -.01em; }
   .block-head .pin { font-size: 13px; font-weight: 400; color: var(--muted); margin-left: 8px; }
   .empty { color: var(--muted); padding: 6px 0; }
+  .dupnote { color: var(--signal); font-size: 13px; }
+  .dupnote:not(:empty) { padding-top: 8px; }
 
   .grid { display: grid; grid-template-columns: minmax(0, 1fr) 176px 68px 108px 64px 52px; gap: 8px; align-items: center; }
   .thead { font-size: 12px; color: var(--muted); padding: 4px 0; }
@@ -317,13 +319,12 @@ function summary(t) {
 function axisRow(a, i) {
   const t = P().axes[a][i], key = `a.${a}.${i}`, base = `axes.${a}.${i}`;
   const open = openDetails.has(key);
-  const warn = t.hiRes && !isPB(t.type) && t.cc > 31;
   const row = `
     <div class="grid trow">
       <input class="tname" data-p="${base}.name" data-str value="${esc(t.name)}" placeholder="Name">
       <select data-p="${base}.type">${options(AXIS_TYPES, t.type)}</select>
       ${isPB(t.type) ? '<span class="none">–</span>'
-        : `<input type="number" min="0" max="127" value="${t.cc}" data-p="${base}.cc" class="${warn ? 'warn' : ''}" title="CC-Nummer">`}
+        : `<input type="number" min="0" max="127" value="${t.cc}" data-p="${base}.cc" title="CC-Nummer">`}
       <select data-p="${base}.channel">${channelOptions(t.channel)}</select>
       <div class="val" data-val="${key}">–</div>
       <div class="acts">
@@ -374,7 +375,48 @@ function renderBlock(b) {
   const head = `<div class="grid thead"><span>Name</span><span>Art</span><span>${isButton ? 'Nummer' : 'CC'}</span><span>Kanal</span><span>Wert</span><span></span></div>`;
   const rows = used.map(i => isButton ? buttonRow(i) : axisRow(b, i)).join('');
   el.innerHTML = `<div class="block-head"><h2>${title}</h2>${add}</div>` +
-    (used.length ? head + rows : '<div class="empty">Keine Ziele – sendet nichts.</div>');
+    (used.length ? head + rows : '<div class="empty">Keine Ziele – sendet nichts.</div>') +
+    '<div class="dupnote"></div>';
+  markConflicts();
+}
+
+// Wie oft jede CC-Nummer pro Kanal im aktiven Preset benutzt wird
+function ccUsage() {
+  const count = {};
+  const add = k => { count[k] = (count[k] || 0) + 1; };
+  P().axes.forEach(list => list.forEach(t => { if (t.on && !isPB(t.type)) add(`${t.channel}.${t.cc}`); }));
+  P().button.forEach(t => { if (t.on && t.type <= BT.CC_TOGGLE) add(`${t.channel}.${t.number}`); });
+  return count;
+}
+
+function freeCC(channel, start) {
+  const used = ccUsage();
+  for (let k = 0; k < 128; k++) {
+    const cc = (start + k) % 128;
+    if (!used[`${channel}.${cc}`]) return cc;
+  }
+  return start;
+}
+
+// Doppelt belegte CCs und 14 Bit über CC 31 markieren
+function markConflicts() {
+  const count = ccUsage();
+  document.querySelectorAll('#blocks .block').forEach(block => {
+    const notes = new Set();
+    block.querySelectorAll('input[data-p$=".cc"], input[data-p$=".number"]').forEach(inp => {
+      const [kind, x, y] = inp.dataset.p.split('.');
+      const t = kind === 'axes' ? P().axes[+x][+y] : P().button[+x];
+      const num = kind === 'axes' ? t.cc : t.number;
+      const isCC = kind === 'axes' || t.type <= BT.CC_TOGGLE;
+      const dup = isCC && count[`${t.channel}.${num}`] > 1;
+      const hi = kind === 'axes' && t.hiRes && t.cc > 31;
+      inp.classList.toggle('warn', dup || hi);
+      if (dup) notes.add(`CC ${num} auf Kanal ${t.channel + 1} ist mehrfach belegt – die Werte überschreiben sich.`);
+      if (hi) notes.add('14 Bit geht nur bei CC 0–31 – sendet hier 7 Bit.');
+    });
+    const note = block.querySelector('.dupnote');
+    if (note) note.textContent = [...notes].join(' ');
+  });
 }
 
 function renderPresetBar() {
@@ -420,10 +462,7 @@ $('blocks').addEventListener('input', e => {
 
   if (RERENDER.test(path)) renderBlock(blockOf(t));
   else if (path.endsWith('.amount')) t.parentElement.querySelector('[data-amount]').textContent = v + ' %';
-  else if (path.endsWith('.cc')) {
-    const [, a, i] = path.split('.').map(Number), tg = P().axes[a][i];
-    t.classList.toggle('warn', !!tg.hiRes && v > 31);
-  }
+  else if (/\.(cc|number|channel)$/.test(path)) markConflicts();
   presetChanged(state.active);
 });
 
@@ -433,9 +472,15 @@ $('blocks').addEventListener('click', e => {
     const b = +d.add, list = b === AXES.length ? P().button : P().axes[b];
     const free = list.findIndex(t => !t.on);
     if (free < 0) return;
+    // Neues Ziel: gleicher Kanal wie das letzte, nächste freie CC-Nummer
     const prev = [...list].reverse().find(t => t.on);
     const channel = prev ? prev.channel : 1;
-    list[free] = b === AXES.length ? buttonTarget(1, BT.CC_HOLD, 64, channel) : axisTarget(1, AT.CC, 1, channel);
+    if (b === AXES.length) {
+      list[free] = buttonTarget(1, BT.CC_HOLD, freeCC(channel, prev ? prev.number + 1 : 64), channel);
+    } else {
+      const start = prev && !isPB(prev.type) ? prev.cc + 1 : 1;
+      list[free] = axisTarget(1, AT.CC, freeCC(channel, start), channel);
+    }
     renderBlock(b);
     presetChanged(state.active);
   } else if (d.rm !== undefined) {
