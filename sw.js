@@ -1,8 +1,8 @@
 // Offline-Cache: Seite startet auch ohne Internet.
 // Lädt immer zuerst aus dem Netz, der Cache greift nur offline.
 // VERSION hochzählen, wenn sich die Dateiliste ändert.
-const VERSION = 'kk-1';
-const FILES = ['./', 'index.html', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png'];
+const VERSION = 'kk-2';
+const FILES = ['./', 'index.html', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'hanson.ttf'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(VERSION).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
