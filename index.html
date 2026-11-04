@@ -25,16 +25,19 @@
     --ok: #2fae5a;
     --font: "Helvetica Neue", Helvetica, Arial, sans-serif;
     --head: "Hanson", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    --chev: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23151514' stroke-width='1.4'/%3E%3C/svg%3E");
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
       --paper: #151514; --ink: #ecebe6; --muted: #8b8983;
       --rule: rgba(236, 235, 230, .14); --field: #1c1c1b;
+      --chev: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23ecebe6' stroke-width='1.4'/%3E%3C/svg%3E");
     }
   }
   :root[data-theme="dark"] {
     --paper: #151514; --ink: #ecebe6; --muted: #8b8983;
     --rule: rgba(236, 235, 230, .14); --field: #1c1c1b;
+    --chev: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23ecebe6' stroke-width='1.4'/%3E%3C/svg%3E");
   }
 
   * { box-sizing: border-box; }
@@ -50,7 +53,11 @@
     font: inherit; color: var(--ink); background: transparent;
     border: 1px solid var(--rule); border-radius: 0; padding: 6px 10px; height: 34px;
   }
-  select { padding-right: 4px; }
+  select {
+    appearance: none; -webkit-appearance: none; padding-right: 28px;
+    background: var(--chev) no-repeat right 10px center;
+  }
+  select option { background: var(--paper); color: var(--ink); }
   input:focus, select:focus { outline: none; border-color: var(--ink); }
   input.warn { border-color: var(--signal); }
   button { cursor: pointer; border-color: var(--ink); }
@@ -60,8 +67,12 @@
   button.solid:hover:not(:disabled) { background: transparent; color: var(--ink); }
   button.text { border: 0; height: auto; padding: 4px 0; color: var(--muted); }
   button.text:hover:not(:disabled) { background: none; color: var(--ink); }
-  input[type="checkbox"] { width: 16px; height: 16px; margin: 0; accent-color: var(--ink); vertical-align: -3px; }
-  input[type="range"] { padding: 0; border: 0; height: 20px; accent-color: var(--ink); width: 140px; }
+  /* Slider: thin line, square handle */
+  input[type="range"] { -webkit-appearance: none; appearance: none; padding: 0; border: 0; height: 20px; width: 140px; background: none; cursor: pointer; }
+  input[type="range"]::-webkit-slider-runnable-track { height: 2px; background: var(--rule); }
+  input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; margin-top: -5px; background: var(--ink); border: 0; }
+  input[type="range"]::-moz-range-track { height: 2px; background: var(--rule); }
+  input[type="range"]::-moz-range-thumb { width: 12px; height: 12px; background: var(--ink); border: 0; border-radius: 0; }
 
   /* ---------- Header ---------- */
   header {
@@ -80,7 +91,7 @@
   .presets { display: flex; align-items: center; gap: 12px 16px; flex-wrap: wrap; padding: 16px 0; border-bottom: 1px solid var(--rule); }
   .tabs { display: inline-flex; border: 1px solid var(--ink); max-width: 100%; }
   .tabs button {
-    border: 0; height: 34px; padding: 0 14px; max-width: 180px;
+    border: 0; height: 34px; padding: 0 14px; width: 150px; text-align: left;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   .tabs button + button { border-left: 1px solid var(--ink); }
@@ -115,8 +126,10 @@
   .ctrl .cap { fill: var(--paper); }
   .ctrl .cap.on { fill: var(--signal); }
   .ctrl text { fill: var(--muted); font-size: 9px; font-family: var(--font); }
-  .last { margin-top: 16px; font-size: 13px; color: var(--muted); min-height: 1.4em; }
-  .rawopt { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 13px; color: var(--muted); }
+  .ctrl .stem { stroke: var(--ink); stroke-opacity: .3; stroke-width: 10; stroke-linecap: round; }
+  .ctrl .pivot { fill: var(--ink); fill-opacity: .3; }
+  .livefoot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; }
+  .last { font-size: 13px; color: var(--muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   /* ---------- Blocks ---------- */
   .block { border-bottom: 1px solid var(--rule); padding-bottom: 24px; margin-bottom: 24px; }
@@ -210,7 +223,6 @@
 
   <main>
     <aside class="live">
-      <h3 class="label">Live</h3>
       <!-- Dimensions from kosmosKontroller.blend: case 84 mm = 196 units (2.33 per mm) -->
       <svg class="ctrl" id="ctrl" viewBox="0 0 200 200" role="img" aria-label="Top view of the controller">
         <rect class="base" x="2" y="2" width="196" height="196"/>
@@ -228,17 +240,22 @@
         </g>
         <text x="104" y="12">Y</text><text x="189" y="96">X</text>
         <!-- Grip from above: body, ring, rotation mark, button cap -->
+        <!-- Shaft from the pivot; the grip is foreshortened in the tilt direction -->
+        <circle class="pivot" cx="100" cy="100" r="12"/>
+        <line class="stem" id="stem" x1="100" y1="100" x2="100" y2="100"/>
         <g id="grip" transform="translate(100 100)">
-          <circle class="grip" r="40"/>
-          <circle class="band" r="23"/>
-          <g id="spin"><line class="mark" x1="0" y1="-16" x2="0" y2="-36"/></g>
-          <circle class="cap" id="cap" r="11.5"/>
+          <g id="tilt">
+            <circle class="grip" r="40"/>
+            <circle class="band" r="23"/>
+            <g id="spin"><line class="mark" x1="0" y1="-16" x2="0" y2="-36"/></g>
+            <circle class="cap" id="cap" r="11.5"/>
+          </g>
         </g>
       </svg>
-      <div class="last" id="last"></div>
-      <label class="rawopt" title="Shows the real joystick positions, even without targets. The controller sends SysEx continuously for this, which is also visible in Ableton.">
-        <input type="checkbox" id="rawOn"> Raw values from controller (SysEx)
-      </label>
+      <div class="livefoot">
+        <div class="last" id="last"></div>
+        <button class="chip" id="rawOn" title="Shows the real joystick positions, even without targets. The controller then sends SysEx continuously, which is also visible in Ableton.">Raw values</button>
+      </div>
     </aside>
 
     <section>
@@ -272,7 +289,7 @@ const BUTTON_BLOCK = AXES.length;
 
 // Axis target types (order = sketch)
 const AT = { PB: 0, PB_PLUS: 1, PB_MINUS: 2, CC: 3, CC_PLUS: 4, CC_MINUS: 5 };
-const AXIS_TYPES = ['Pitch bend', 'Pitch bend + only', 'Pitch bend − only', 'CC full axis', 'CC + only', 'CC − only'];
+const AXIS_TYPES = ['Pitch bend', 'Pitch bend +', 'Pitch bend −', 'CC full axis', 'CC +', 'CC −'];
 const isPB = type => type <= AT.PB_MINUS;
 
 // Button target types (order = sketch)
@@ -718,17 +735,23 @@ function onState(d) {
 const axisPos = [0, 0, 0];
 let rawOn = false;
 try { rawOn = localStorage.getItem('kk-raw') === '1'; } catch (e) {}
-$('rawOn').checked = rawOn;
-$('rawOn').onchange = () => {
-  rawOn = $('rawOn').checked;
+$('rawOn').classList.toggle('on', rawOn);
+$('rawOn').onclick = () => {
+  rawOn = !rawOn;
+  $('rawOn').classList.toggle('on', rawOn);
   try { localStorage.setItem('kk-raw', rawOn ? '1' : '0'); } catch (e) {}
   if (rawOn && connected) sysex(CMD.MONITOR);
 };
 
 function drawLive() {
   const [y, x, r] = axisPos.map(v => Math.max(-1, Math.min(1, v)));
-  // Grip stays inside the flange at full deflection
-  $('grip').setAttribute('transform', `translate(${100 + x * 22} ${100 - y * 22})`);
+  // Tilt: the grip top moves out from the pivot and is foreshortened in that direction
+  const gx = 100 + x * 44, gy = 100 - y * 44;
+  const tilt = Math.min(1, Math.hypot(x, y)), dir = Math.atan2(-y, x) * 180 / Math.PI;
+  $('grip').setAttribute('transform', `translate(${gx} ${gy})`);
+  $('tilt').setAttribute('transform', `rotate(${dir}) scale(${1 - tilt * .18} 1) rotate(${-dir})`);
+  $('stem').setAttribute('x2', gx);
+  $('stem').setAttribute('y2', gy);
   $('spin').setAttribute('transform', `rotate(${r * 135})`);
   $('ctrl').classList.toggle('moving', [x, y, r].some(v => Math.abs(v) > .05));
 }
