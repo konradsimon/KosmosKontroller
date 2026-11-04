@@ -15,7 +15,7 @@
     --muted: #77756f;
     --rule: rgba(21, 21, 20, .14);
     --field: #f7f6f3;
-    --signal: #e0301e;
+    --signal: #ea3360;
     --ok: #2fae5a;
     --font: "Helvetica Neue", Helvetica, Arial, sans-serif;
   }
@@ -98,27 +98,17 @@
   /* ---------- Live-Ansicht ---------- */
   .live { position: sticky; top: 24px; align-self: start; }
   .live h3 { font-size: 13px; font-weight: 400; color: var(--muted); margin: 0 0 8px; }
-  .pad { position: relative; aspect-ratio: 1; background: var(--field); border: 1px solid var(--rule); }
-  .pad::before, .pad::after { content: ""; position: absolute; background: var(--rule); }
-  .pad::before { left: 50%; top: 0; bottom: 0; width: 1px; }
-  .pad::after { top: 50%; left: 0; right: 0; height: 1px; }
-  .pad .lab { position: absolute; font-size: 12px; color: var(--muted); }
-  .pad .lab.y { left: calc(50% + 6px); top: 4px; }
-  .pad .lab.x { right: 6px; top: calc(50% + 2px); }
-  .dot {
-    position: absolute; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%;
-    background: var(--ink); left: 50%; top: 50%; z-index: 1;
-  }
-  .dot.moving { background: var(--signal); }
-  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 20px; }
-  .dial { position: relative; width: 88px; height: 88px; border: 1px solid var(--rule); border-radius: 50%; background: var(--field); }
-  .dial .hand {
-    position: absolute; left: 50%; top: 8px; width: 2px; height: 36px; margin-left: -1px;
-    background: var(--ink); transform-origin: 50% 36px;
-  }
-  .dial.moving .hand { background: var(--signal); }
-  .key { width: 88px; height: 88px; border: 1px solid var(--rule); background: var(--field); }
-  .key.on { background: var(--signal); border-color: var(--signal); }
+  /* Draufsicht auf den Controller: Basis, Ring, Griff mit Drehmarke und Taster-Kappe */
+  .ctrl { display: block; width: 100%; }
+  .ctrl .base { fill: var(--field); stroke: var(--rule); stroke-width: 1.5; }
+  .ctrl .line { fill: none; stroke: var(--rule); stroke-width: 1.5; }
+  .ctrl .grip { fill: var(--ink); }
+  .ctrl .band { fill: none; stroke: var(--paper); stroke-opacity: .3; stroke-width: 1.5; }
+  .ctrl .mark { stroke: var(--paper); stroke-width: 3; stroke-linecap: round; }
+  .ctrl.moving .mark { stroke: var(--signal); }
+  .ctrl .cap { fill: var(--paper); }
+  .ctrl .cap.on { fill: var(--signal); }
+  .ctrl text { fill: var(--muted); font-size: 9px; font-family: var(--font); }
   .last { margin-top: 20px; font-size: 13px; color: var(--muted); min-height: 1.4em; }
   .rawopt { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 13px; color: var(--muted); }
 
@@ -197,15 +187,24 @@
 
   <main>
     <aside class="live">
-      <h3>Joystick</h3>
-      <div class="pad">
-        <span class="lab y">Y</span><span class="lab x">X</span>
-        <div class="dot" id="dot"></div>
-      </div>
-      <div class="row2">
-        <div><h3>Rotation</h3><div class="dial" id="dial"><div class="hand" id="hand"></div></div></div>
-        <div><h3>Taster</h3><div class="key" id="key"></div></div>
-      </div>
+      <h3>Live</h3>
+      <svg class="ctrl" id="ctrl" viewBox="0 0 200 200" role="img" aria-label="Draufsicht auf den Controller">
+        <rect class="base" x="2" y="2" width="196" height="196"/>
+        <path class="line" d="M2 2 L59 59 M198 2 L141 59 M2 198 L59 141 M198 198 L141 141"/>
+        <circle class="line" cx="100" cy="100" r="58"/>
+        <circle class="line" cx="100" cy="100" r="46"/>
+        <g class="line">
+          <circle cx="63" cy="63" r="2.5"/><circle cx="137" cy="63" r="2.5"/>
+          <circle cx="63" cy="137" r="2.5"/><circle cx="137" cy="137" r="2.5"/>
+        </g>
+        <text x="104" y="14">Y</text><text x="186" y="96">X</text>
+        <g id="grip" transform="translate(100 100)">
+          <circle class="grip" r="30"/>
+          <circle class="band" r="23"/>
+          <g id="spin"><line class="mark" x1="0" y1="-13" x2="0" y2="-27"/></g>
+          <circle class="cap" id="cap" r="8"/>
+        </g>
+      </svg>
       <div class="last" id="last"></div>
       <label class="rawopt" title="Zeigt die echten Joystick-Positionen, auch ohne Ziele. Der Controller sendet dafür laufend SysEx, das sieht man auch in Ableton.">
         <input type="checkbox" id="rawOn"> Rohwerte vom Controller (SysEx)
@@ -638,18 +637,18 @@ $('rawOn').onchange = () => {
 
 function drawLive() {
   const [y, x, r] = axisPos.map(v => Math.max(-1, Math.min(1, v)));
-  $('dot').style.left = (50 + x * 50) + '%';
-  $('dot').style.top = (50 - y * 50) + '%';
-  $('hand').style.transform = `rotate(${r * 135}deg)`;
-  $('dot').classList.toggle('moving', Math.abs(x) > .05 || Math.abs(y) > .05);
-  $('dial').classList.toggle('moving', Math.abs(r) > .05);
+  $('grip').setAttribute('transform', `translate(${100 + x * 40} ${100 - y * 40})`);
+  $('spin').setAttribute('transform', `rotate(${r * 135})`);
+  $('ctrl').classList.toggle('moving', [x, y, r].some(v => Math.abs(v) > .05));
 }
+
+const setKey = on => $('cap').classList.toggle('on', on);
 
 // Echte Joystick-Positionen (12 Bit) vom Controller
 function onLive(d) {
   if (!rawOn) return;
   for (let a = 0; a < 3; a++) axisPos[a] = (((d[5 + a * 2] << 6) | d[6 + a * 2]) - 2048) / 2048;
-  $('key').classList.toggle('on', !!d[11]);
+  setKey(!!d[11]);
   drawLive();
 }
 
@@ -666,7 +665,7 @@ function showValues(d) {
   const p = P(), type = d[0] & 0xF0, ch = d[0] & 0x0F;
   const eachAxis = fn => p.axes.forEach((list, a) => list.forEach((t, i) => { if (t.on && t.channel === ch) fn(t, `a.${a}.${i}`, a); }));
   const eachButton = fn => p.button.forEach((t, i) => { if (t.on && t.channel === ch) fn(t, `b.${i}`); });
-  const key = on => { if (!rawOn) $('key').classList.toggle('on', on); };
+  const key = on => { if (!rawOn) setKey(on); };
 
   if (type === 0xE0) {
     const v = ((d[2] << 7) | d[1]) - 8192;
