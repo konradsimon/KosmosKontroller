@@ -154,13 +154,21 @@
   .acts .mute.on, .acts .mute.on:hover:not(:disabled) { background: var(--signal); border-color: var(--signal); color: #fff; }
 
   .sub { font-size: 13px; color: var(--muted); padding: 0 0 4px 11px; }
+  /* Fine settings of a target: indented under the row, marked by a line on the left */
   .details {
-    display: flex; align-items: center; gap: 10px 24px; flex-wrap: wrap;
-    margin: 4px 0 8px; padding: 12px; background: var(--field); border: 1px solid var(--rule); color: var(--muted);
+    display: flex; align-items: center; gap: 8px 28px; flex-wrap: wrap;
+    margin: 2px 0 8px 1px; padding: 6px 0 6px 12px; border-left: 2px solid var(--rule);
+    color: var(--muted); font-size: 14px;
   }
   .details label { display: inline-flex; align-items: center; gap: 8px; }
-  .details select { width: auto; }
-  .curve { width: 30px; height: 30px; border: 1px solid var(--rule); background: var(--paper); }
+  .details select { width: auto; height: 30px; padding: 4px 6px; }
+  .details .amountval { color: var(--ink); min-width: 4.5ch; }
+  .details .amountval.pb { min-width: 15em; }
+  .details .toggles { display: inline-flex; gap: 6px; margin-left: auto; }
+  .chip { height: 26px; padding: 0 10px; font-size: 13px; color: var(--muted); border: 1px solid var(--rule); }
+  .chip:hover:not(:disabled) { background: none; color: var(--ink); border-color: var(--ink); }
+  .chip.on, .chip.on:hover:not(:disabled) { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  .curve { width: 30px; height: 30px; border: 1px solid var(--rule); background: var(--field); }
   .curve path { fill: none; stroke: var(--ink); stroke-width: 1.5; }
 
   @media (max-width: 640px) {
@@ -381,10 +389,12 @@ function axisRow(a, i) {
     <div class="details">
       <label>Curve <select data-p="${base}.curve">${options(CURVES.map(c => c[0]), t.curve)}</select>${curveSvg(t.curve)}</label>
       ${isPB(t.type)
-        ? `<label title="Relative to a pitch bend range of ±12 semitones in the synth">Amount <input type="range" min="0" max="${PB_RANGE}" step="1" value="${t.amount}" data-p="${base}.amount"><span data-amount>${amountLabel(t)}</span></label>`
-        : `<label>Amount <input type="range" min="0" max="100" step="5" value="${t.amount}" data-p="${base}.amount"><span data-amount>${amountLabel(t)}</span></label>`}
-      <label><input type="checkbox" data-p="${base}.invert" ${t.invert ? 'checked' : ''}> Invert</label>
-      ${isPB(t.type) ? '' : `<label title="Sends CC n and CC n+32 – CC 0–31 only"><input type="checkbox" data-p="${base}.hiRes" ${t.hiRes ? 'checked' : ''}> 14-bit</label>`}
+        ? `<label title="Relative to a pitch bend range of ±12 semitones in the synth">Amount <input type="range" min="0" max="${PB_RANGE}" step="1" value="${t.amount}" data-p="${base}.amount"><span class="amountval pb" data-amount>${amountLabel(t)}</span></label>`
+        : `<label>Amount <input type="range" min="0" max="100" step="5" value="${t.amount}" data-p="${base}.amount"><span class="amountval" data-amount>${amountLabel(t)}</span></label>`}
+      <span class="toggles">
+        <button class="chip ${t.invert ? 'on' : ''}" data-toggle="${base}.invert">Invert</button>
+        ${isPB(t.type) ? '' : `<button class="chip ${t.hiRes ? 'on' : ''}" data-toggle="${base}.hiRes" title="Sends CC n and CC n+32 – CC 0–31 only">14-bit</button>`}
+      </span>
     </div>`;
 }
 
@@ -564,6 +574,12 @@ $('blocks').addEventListener('click', e => {
     const [kind, x, y] = d.mute.split('.');
     const t = kind === 'a' ? P().axes[+x][+y] : P().button[+x];
     t.muted = t.muted ? 0 : 1;
+    renderBlock(blockOf(btn));
+    presetChanged(state.active);
+  } else if (d.toggle !== undefined) {
+    const keys = d.toggle.split('.'), k = keys.pop();
+    const t = keys.reduce((o, x) => o[x], P());
+    t[k] = t[k] ? 0 : 1;
     renderBlock(blockOf(btn));
     presetChanged(state.active);
   } else if (d.details !== undefined) {
