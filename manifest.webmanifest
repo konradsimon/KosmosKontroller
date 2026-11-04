@@ -1,7 +1,7 @@
 {
   "name": "Kosmos Kontroller",
   "short_name": "Kontroller",
-  "description": "MIDI-Mapping für den Kosmos Kontroller",
+  "description": "MIDI mapping for the Kosmos Kontroller",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

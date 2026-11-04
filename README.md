@@ -1,29 +1,29 @@
 # KosmosKontroller
 
-Joystick-MIDI-Controller (Seeed XIAO SAMD21, USB-MIDI) mit Weboberfläche zum Einstellen.
+Joystick MIDI controller (Seeed XIAO SAMD21, USB MIDI) with a web interface for configuration.
 
-**Weboberfläche:** https://konrad-simon.com/KosmosKontroller/ – in Chrome öffnen, Controller anstecken, „Verbinden“.
-Über „Installieren“ in der Adressleiste lässt sie sich als App ins Dock legen und startet dann auch offline.
+**Web interface:** https://konrad-simon.com/KosmosKontroller/ – open in Chrome, plug in the controller, click "Connect".
+Use "Install" in the address bar to add it as an app; it then also starts offline.
 
-## Inhalt
+## Contents
 
-- `index.html` – Weboberfläche (Web MIDI, nur Chrome/Edge)
-- `firmware/joystick_webconfig/` – Arduino-Sketch für den Controller
-- `manifest.webmanifest`, `sw.js`, `icons/` – App-Installation und Offline-Cache
+- `index.html` – web interface (Web MIDI, Chrome/Edge only)
+- `firmware/joystick_webconfig/` – Arduino sketch for the controller
+- `manifest.webmanifest`, `sw.js`, `icons/` – app installation and offline cache
 
 ## Firmware
 
-Benötigt in der Arduino IDE:
-- Board: Seeeduino XIAO (Seeed SAMD), USB Stack: TinyUSB
-- Bibliotheken: Adafruit TinyUSB, MIDI Library (FortySevenEffects), FlashStorage
+Required in the Arduino IDE:
+- Board: Seeeduino XIAO (Seeed SAMD), USB stack: TinyUSB
+- Libraries: Adafruit TinyUSB, MIDI Library (FortySevenEffects), FlashStorage
 
-Nach jedem Upload ist der Flash-Speicher leer und es gelten die Werkseinstellungen.
-Vorher in der Weboberfläche **Exportieren**, danach **Importieren** und **Auf Controller speichern**.
+Every upload clears the flash memory and the factory defaults apply.
+**Export** in the web interface first, then **Import** and **Save to controller** afterwards.
 
-## Funktionen
+## Features
 
-- 3 Achsen (Y, X, Rotation) mit je bis zu 4 Zielen: Pitchbend, CC ganze Achse, CC / Pitchbend nur in eine Richtung
-- Pro Ziel: Kurve, Stärke, Umkehren, 14 Bit (CC 0–31)
-- Taster mit bis zu 4 Zielen: CC/Note halten oder umschalten, Program Change
-- 4 Presets, Wechsel am Taster per langem Druck oder 3× drücken
-- Export / Import als JSON
+- 3 axes (Y, X, rotation) with up to 4 targets each: pitch bend, CC full axis, CC / pitch bend in one direction only
+- Per target: curve, amount (pitch bend in semitones, relative to a ±12 bend range), invert, 14-bit (CC 0–31), mute
+- Button with up to 4 targets: CC / note momentary or toggle, program change
+- 4 presets, switched on the button by long press or triple press
+- Export / import as JSON
