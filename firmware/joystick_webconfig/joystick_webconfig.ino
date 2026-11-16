@@ -47,13 +47,13 @@ midi::MidiInterface<midi::SerialMIDI<Adafruit_USBD_MIDI>, KontrollerSettings> MI
 #define CMD_SET          0x03   // Browser -> Controller: [index, preset] übernehmen (nur RAM)
 #define CMD_SAVE         0x04   // Browser -> Controller: alles in Flash speichern
 #define CMD_RESET        0x05   // Browser -> Controller: Werkseinstellungen
-#define CMD_STATE        0x06   // Controller -> Browser: [aktives Preset, Geste, Dauer/10ms]
+#define CMD_STATE        0x06   // Controller -> Browser: [aktives Preset, Geste, Dauer/10ms, gesperrt]
 #define CMD_SELECT       0x07   // Browser -> Controller: [index] Preset aktivieren
-#define CMD_GLOBAL       0x08   // Browser -> Controller: [Geste, Dauer/10ms]
+#define CMD_GLOBAL       0x08   // Browser -> Controller: [Geste, Dauer/10ms, gesperrt]
 #define CMD_MONITOR      0x09   // Browser -> Controller: Lebenszeichen, Live-Positionen senden
 #define CMD_LIVE         0x0A   // Controller -> Browser: 3 x Achse (2 x 6 Bit), Taster
 
-#define CONFIG_MAGIC     0x4B4B0005
+#define CONFIG_MAGIC     0x4B4B0006
 #define PB_RANGE         12     // Halbtöne: Pitchbend-Bereich im Synth (eine Oktave)
 #define NAME_LEN         16     // Bytes (UTF-8), über SysEx als Nibbles übertragen
 #define PRESET_COUNT     4
@@ -102,7 +102,11 @@ struct AxisTarget {
   byte curve;
   byte invert;
   byte hiRes;            // 14 Bit (CC n + CC n+32), nur CC 0-31
-  byte amount;           // CC: Stärke 0-100 %, Pitchbend: Halbtöne 0-PB_RANGE
+  // Wertebereich: CC 0-127, Pitchbend in Halbtönen -PB_RANGE ... PB_RANGE.
+  // Ganze Achse: Min bei voll -, Max bei voll + (Pitchbend: Mitte immer 0).
+  // Nur eine Richtung: Min in Ruhe, Max bei voller Auslenkung.
+  int8_t rangeMin;
+  int8_t rangeMax;
   byte muted;            // stumm: eingestellt, sendet aber nichts (z. B. für MIDI-Learn)
   char name[NAME_LEN];
 };
@@ -126,6 +130,7 @@ struct Config {
   uint32_t magic;
   byte activePreset;     // Start-Preset
   byte gesture;
+  byte locked;           // Presetwechsel am Taster gesperrt
   byte longPressTime;    // x 10 ms
   Preset preset[PRESET_COUNT];
 };
@@ -133,13 +138,22 @@ struct Config {
 FlashStorage(configStore, Config);
 Config config;
 
+void setDefaultRange(AxisTarget& t) {
+  switch (t.type) {
+    case AT_PB:       t.rangeMin = -PB_RANGE; t.rangeMax = PB_RANGE; break;
+    case AT_PB_PLUS:  t.rangeMin = 0;         t.rangeMax = PB_RANGE; break;
+    case AT_PB_MINUS: t.rangeMin = 0;         t.rangeMax = -PB_RANGE; break;
+    default:          t.rangeMin = 0;         t.rangeMax = 127; break;
+  }
+}
+
 void setAxisTarget(AxisTarget& t, byte type, byte cc, byte channel) {
   memset(&t, 0, sizeof(t));
   t.on = 1;
   t.type = type;
   t.cc = cc;
   t.channel = channel;
-  t.amount = type <= AT_PB_MINUS ? PB_RANGE : 100;
+  setDefaultRange(t);
 }
 
 // Werkseinstellungen = Verhalten des alten Sketches
@@ -159,6 +173,7 @@ void loadDefaults() {
   config.magic = CONFIG_MAGIC;
   config.activePreset = 0;
   config.gesture = GESTURE_LONG;
+  config.locked = 0;
   config.longPressTime = 60;
   for (int i = 0; i < PRESET_COUNT; i++) loadDefaultPreset(config.preset[i], i);
 }
@@ -253,9 +268,10 @@ void sendProgram(byte channel, byte program) {
 // =======================================================
 // Preset-Daten (CMD_PRESET und CMD_SET):
 //   Name (NAME_LEN x 2 Nibbles)
-//   AXIS_COUNT x AXIS_TARGETS x [an, Art, CC, Kanal 0-15, Kurve, Umkehren, 14 Bit, Stärke, stumm, Name]
+//   AXIS_COUNT x AXIS_TARGETS x [an, Art, CC, Kanal 0-15, Kurve, Umkehren, 14 Bit, Min, Max, stumm, Name]
+//     (Min/Max bei Pitchbend um PB_RANGE verschoben, damit sie 7 Bit bleiben)
 //   BUTTON_TARGETS x [an, Art, Nummer, Kanal 0-15, stumm, Name]
-#define AXIS_TARGET_BYTES    (9 + NAME_LEN * 2)
+#define AXIS_TARGET_BYTES    (10 + NAME_LEN * 2)
 #define BUTTON_TARGET_BYTES  (5 + NAME_LEN * 2)
 #define PRESET_BYTES  (NAME_LEN * 2 + AXIS_COUNT * AXIS_TARGETS * AXIS_TARGET_BYTES + BUTTON_TARGETS * BUTTON_TARGET_BYTES)
 
@@ -301,7 +317,9 @@ void sendPreset(int index) {
       msg[n++] = t.curve;
       msg[n++] = t.invert ? 1 : 0;
       msg[n++] = t.hiRes ? 1 : 0;
-      msg[n++] = t.amount & 0x7F;
+      int offset = t.type <= AT_PB_MINUS ? PB_RANGE : 0;
+      msg[n++] = (t.rangeMin + offset) & 0x7F;
+      msg[n++] = (t.rangeMax + offset) & 0x7F;
       msg[n++] = t.muted ? 1 : 0;
       putName(msg, n, t.name);
     }
@@ -320,6 +338,11 @@ void sendPreset(int index) {
   sendEnd();
 }
 
+int8_t readRange(byte b, byte type) {
+  if (type <= AT_PB_MINUS) return constrain((int)b - PB_RANGE, -PB_RANGE, PB_RANGE);
+  return b & 0x7F;
+}
+
 void readPreset(Preset& p, const byte* d) {
   int n = 0;
   getName(d, n, p.name);
@@ -333,9 +356,8 @@ void readPreset(Preset& p, const byte* d) {
       t.curve   = clampByte(d[n++], CURVE_COUNT);
       t.invert  = d[n++] ? 1 : 0;
       t.hiRes   = d[n++] ? 1 : 0;
-      byte amount = d[n++];
-      byte maxAmount = t.type <= AT_PB_MINUS ? PB_RANGE : 100;
-      t.amount  = amount > maxAmount ? maxAmount : amount;
+      t.rangeMin = readRange(d[n++], t.type);
+      t.rangeMax = readRange(d[n++], t.type);
       t.muted   = d[n++] ? 1 : 0;
       getName(d, n, t.name);
     }
@@ -352,9 +374,9 @@ void readPreset(Preset& p, const byte* d) {
 }
 
 void sendState() {
-  byte m[3] = {config.activePreset, config.gesture, (byte)(config.longPressTime & 0x7F)};
+  byte m[4] = {config.activePreset, config.gesture, (byte)(config.longPressTime & 0x7F), (byte)(config.locked ? 1 : 0)};
   sendHeader(CMD_STATE);
-  sendBytes(m, 3);
+  sendBytes(m, 4);
   sendEnd();
 }
 
@@ -409,7 +431,10 @@ void activatePreset(int index) {
 
 // Umschalten / Programm: bei "langer Druck" erst beim Loslassen auslösen,
 // damit ein Presetwechsel nicht zusätzlich die Aktion auslöst
-bool tapsOnRelease() { return config.gesture == GESTURE_LONG; }
+// Gesperrt: Taster wechselt nie das Preset, Aktionen wie bei "Aus"
+byte activeGesture() { return config.locked ? GESTURE_OFF : config.gesture; }
+
+bool tapsOnRelease() { return activeGesture() == GESTURE_LONG; }
 
 void buttonTap(int i) {
   if (isToggleType(active().button[i].type)) {
@@ -426,7 +451,7 @@ void onButtonPress() {
   suppressRelease = false;
   pressTime = millis();
 
-  if (config.gesture == GESTURE_TRIPLE) {
+  if (activeGesture() == GESTURE_TRIPLE) {
     tapCount = (pressTime - lastTapTime < TAP_WINDOW) ? tapCount + 1 : 1;
     lastTapTime = pressTime;
     if (tapCount >= 3) {
@@ -457,7 +482,7 @@ void onButtonRelease() {
 }
 
 void checkLongPress() {
-  if (config.gesture != GESTURE_LONG || !buttonHeld || longPressFired) return;
+  if (activeGesture() != GESTURE_LONG || !buttonHeld || longPressFired) return;
   if (millis() - pressTime < (unsigned long)config.longPressTime * 10) return;
 
   longPressFired = true;
@@ -504,9 +529,10 @@ void handleSysEx(byte* data, unsigned size) {
       break;
 
     case CMD_GLOBAL:
-      if (size < 8) return;
+      if (size < 9) return;
       config.gesture = clampByte(data[5], GESTURE_COUNT);
       config.longPressTime = max((int)data[6], 20);
+      config.locked = data[7] ? 1 : 0;
       sendState();
       break;
 
@@ -639,16 +665,18 @@ void processAxis(int axis, int smoothValue) {
     bool isPB = t.type <= AT_PB_MINUS;
     float v = isPB ? posPB : posCC;
     if (t.invert) v = -v;
-    // Pitchbend: Halbtöne bezogen auf den Bereich im Synth, CC: Prozent
-    float amount = isPB ? t.amount / (float)PB_RANGE : t.amount / 100.0f;
+    // Wertebereich: CC 0-127, Pitchbend in Halbtönen (bezogen auf PB_RANGE im Synth)
+    float lo = t.rangeMin, hi = t.rangeMax;
+    float plus  = v > 0 ? applyCurve(v, t.curve) : 0;    // Auslenkung nach + (0 ... 1)
+    float minus = v < 0 ? applyCurve(-v, t.curve) : 0;   // Auslenkung nach - (0 ... 1)
 
     switch (t.type) {
-      case AT_PB:       sendTargetPB(axis, i, signedCurve(v, t.curve) * amount); break;
-      case AT_PB_PLUS:  sendTargetPB(axis, i, v > 0 ? applyCurve(v, t.curve) * amount : 0); break;
-      case AT_PB_MINUS: sendTargetPB(axis, i, v < 0 ? -applyCurve(-v, t.curve) * amount : 0); break;
-      case AT_CC:       sendTargetCC(axis, i, 0.5f + 0.5f * signedCurve(v, t.curve) * amount); break;
-      case AT_CC_PLUS:  sendTargetCC(axis, i, v > 0 ? applyCurve(v, t.curve) * amount : 0); break;
-      case AT_CC_MINUS: sendTargetCC(axis, i, v < 0 ? applyCurve(-v, t.curve) * amount : 0); break;
+      case AT_PB:       sendTargetPB(axis, i, (plus * hi - minus * lo) / PB_RANGE); break;  // Mitte = 0
+      case AT_PB_PLUS:  sendTargetPB(axis, i, (lo + plus * (hi - lo)) / PB_RANGE); break;
+      case AT_PB_MINUS: sendTargetPB(axis, i, (lo + minus * (hi - lo)) / PB_RANGE); break;
+      case AT_CC:       sendTargetCC(axis, i, (lo + (0.5f + 0.5f * (plus - minus)) * (hi - lo)) / 127); break;
+      case AT_CC_PLUS:  sendTargetCC(axis, i, (lo + plus * (hi - lo)) / 127); break;
+      case AT_CC_MINUS: sendTargetCC(axis, i, (lo + minus * (hi - lo)) / 127); break;
     }
   }
 }
