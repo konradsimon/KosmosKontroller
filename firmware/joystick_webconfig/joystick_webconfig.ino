@@ -47,13 +47,13 @@ midi::MidiInterface<midi::SerialMIDI<Adafruit_USBD_MIDI>, KontrollerSettings> MI
 #define CMD_SET          0x03   // Browser -> Controller: [index, preset] übernehmen (nur RAM)
 #define CMD_SAVE         0x04   // Browser -> Controller: alles in Flash speichern
 #define CMD_RESET        0x05   // Browser -> Controller: Werkseinstellungen
-#define CMD_STATE        0x06   // Controller -> Browser: [aktives Preset, Geste, Dauer/10ms, gesperrt]
+#define CMD_STATE        0x06   // Controller -> Browser: [aktives Preset, Geste, Dauer/10ms]
 #define CMD_SELECT       0x07   // Browser -> Controller: [index] Preset aktivieren
-#define CMD_GLOBAL       0x08   // Browser -> Controller: [Geste, Dauer/10ms, gesperrt]
+#define CMD_GLOBAL       0x08   // Browser -> Controller: [Geste, Dauer/10ms]
 #define CMD_MONITOR      0x09   // Browser -> Controller: Lebenszeichen, Live-Positionen senden
 #define CMD_LIVE         0x0A   // Controller -> Browser: 3 x Achse (2 x 6 Bit), Taster
 
-#define CONFIG_MAGIC     0x4B4B0006
+#define CONFIG_MAGIC     0x4B4B0007
 #define PB_RANGE         12     // Halbtöne: Pitchbend-Bereich im Synth (eine Oktave)
 #define NAME_LEN         16     // Bytes (UTF-8), über SysEx als Nibbles übertragen
 #define PRESET_COUNT     4
@@ -130,7 +130,6 @@ struct Config {
   uint32_t magic;
   byte activePreset;     // Start-Preset
   byte gesture;
-  byte locked;           // Presetwechsel am Taster gesperrt
   byte longPressTime;    // x 10 ms
   Preset preset[PRESET_COUNT];
 };
@@ -173,7 +172,6 @@ void loadDefaults() {
   config.magic = CONFIG_MAGIC;
   config.activePreset = 0;
   config.gesture = GESTURE_LONG;
-  config.locked = 0;
   config.longPressTime = 60;
   for (int i = 0; i < PRESET_COUNT; i++) loadDefaultPreset(config.preset[i], i);
 }
@@ -374,9 +372,9 @@ void readPreset(Preset& p, const byte* d) {
 }
 
 void sendState() {
-  byte m[4] = {config.activePreset, config.gesture, (byte)(config.longPressTime & 0x7F), (byte)(config.locked ? 1 : 0)};
+  byte m[3] = {config.activePreset, config.gesture, (byte)(config.longPressTime & 0x7F)};
   sendHeader(CMD_STATE);
-  sendBytes(m, 4);
+  sendBytes(m, 3);
   sendEnd();
 }
 
@@ -431,10 +429,7 @@ void activatePreset(int index) {
 
 // Umschalten / Programm: bei "langer Druck" erst beim Loslassen auslösen,
 // damit ein Presetwechsel nicht zusätzlich die Aktion auslöst
-// Gesperrt: Taster wechselt nie das Preset, Aktionen wie bei "Aus"
-byte activeGesture() { return config.locked ? GESTURE_OFF : config.gesture; }
-
-bool tapsOnRelease() { return activeGesture() == GESTURE_LONG; }
+bool tapsOnRelease() { return config.gesture == GESTURE_LONG; }
 
 void buttonTap(int i) {
   if (isToggleType(active().button[i].type)) {
@@ -451,7 +446,7 @@ void onButtonPress() {
   suppressRelease = false;
   pressTime = millis();
 
-  if (activeGesture() == GESTURE_TRIPLE) {
+  if (config.gesture == GESTURE_TRIPLE) {
     tapCount = (pressTime - lastTapTime < TAP_WINDOW) ? tapCount + 1 : 1;
     lastTapTime = pressTime;
     if (tapCount >= 3) {
@@ -482,7 +477,7 @@ void onButtonRelease() {
 }
 
 void checkLongPress() {
-  if (activeGesture() != GESTURE_LONG || !buttonHeld || longPressFired) return;
+  if (config.gesture != GESTURE_LONG || !buttonHeld || longPressFired) return;
   if (millis() - pressTime < (unsigned long)config.longPressTime * 10) return;
 
   longPressFired = true;
@@ -529,10 +524,9 @@ void handleSysEx(byte* data, unsigned size) {
       break;
 
     case CMD_GLOBAL:
-      if (size < 9) return;
+      if (size < 8) return;
       config.gesture = clampByte(data[5], GESTURE_COUNT);
       config.longPressTime = max((int)data[6], 20);
-      config.locked = data[7] ? 1 : 0;
       sendState();
       break;
 
